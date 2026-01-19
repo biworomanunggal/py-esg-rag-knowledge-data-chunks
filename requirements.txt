@@ -1,0 +1,7 @@
+python-dotenv
+qdrant-client
+sentence-transformers
+openai
+requests
+pdfplumber
+tabulate
