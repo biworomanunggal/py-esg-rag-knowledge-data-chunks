@@ -12,6 +12,7 @@ load_dotenv()
 
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
+QDRANT_TOKEN = os.getenv("QDRANT_TOKEN")
 COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "esg_chatbot")
 EMBEDDING_DIMENSION = int(os.getenv("EMBEDDING_DIMENSION", 768))
 EMBEDDING_API_URL = os.getenv("EMBEDDING_API_URL")
@@ -146,7 +147,12 @@ def main():
         return
 
     print("Connecting to Qdrant...")
-    client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+    is_remote = "katadata.co.id" in QDRANT_HOST
+    if is_remote:
+        client = QdrantClient(url=f"https://{QDRANT_HOST}", api_key=QDRANT_TOKEN)
+        print(f"Using remote Qdrant: {QDRANT_HOST} (with API key)")
+    else:
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
     print(f"Using embedding API: {EMBEDDING_API_URL}")
 
