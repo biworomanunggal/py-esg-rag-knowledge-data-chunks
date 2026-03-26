@@ -1,0 +1,56 @@
+{
+  "session_id": "abc123s",
+  "created_at": "2026-01-20T12:49:19.661568",
+  "messages": [
+    {
+      "role": "user",
+      "content": "perusahaan apa saja yang anda miliki data esgnya?",
+      "timestamp": "2026-01-20T12:49:37.179106"
+    },
+    {
+      "role": "assistant",
+      "content": "Berikut adalah daftar perusahaan yang datanya tersedia dalam sistem:\n\n\n**Chemicals** (4 perusahaan):\n  • PT Avia Avian Tbk\n  • PT Barito Pacific Tbk\n  • PT Chandra Asri Pacific Tbk\n  • PT ChemStar Indonesia Tbk\n\n**Energy** (2 perusahaan):\n  • PT Apexindo Pratama Duta Tbk\n  • PT ELNUSA Tbk\n\n**F&B** (4 perusahaan):\n  • PT Akasha Wira International Tbk\n  • PT Aman Agrindo Tbk\n  • PT Budi Starch & Sweetener Tbk\n  • PT Delta Djakarta Tbk\n\n**Finance** (4 perusahaan):\n  • PT Bank Amar Indonesia Tbk\n  • PT Bank Jago Tbk\n  • PT Bank OCBC NISP Tbk\n  • PT Bank Pembangunan Daerah Jawa Timur Tbk\n\n**Hospitality** (4 perusahaan):\n  • Mandarine Oriental\n  • PT ARTHAVEST Tbk\n  • PT Andalan Perkasa Abadi Tbk\n  • PT MNC Land Tbk\n\n**Mining** (3 perusahaan):\n  • PT ARCHI INDONESIA Tbk\n  • PT Adaro Andalan Indonesia Tbk\n  • PT Astrindo Nusantara Infrastruktur Tbk\n\n**Plantation** (3 perusahaan):\n  • PT Andira Agro Tbk\n  • PT Astra Agro Lestari Tbk\n  • PT Austindo Nusantara Jaya Tbk\n\n**Transportation** (4 perusahaan):\n  • PT Adi Sarana Armada Tbk\n  • PT AirAsia Indonesia Tbk\n  • PT Armada Berjaya Trans Tbk\n  • PT Batavia Prosperindo Trans Tbk\n\n---\n**Total: 28 perusahaan** dari 8 sektor\n\nAnda dapat bertanya tentang data ESG, emisi, keberlanjutan, dan informasi lainnya dari perusahaan-perusahaan di atas.",
+      "timestamp": "2026-01-20T12:49:37.179302"
+    },
+    {
+      "role": "user",
+      "content": "berapa jumlah penggunaan listrik di Adi sarana",
+      "timestamp": "2026-01-20T12:50:21.759822"
+    },
+    {
+      "role": "assistant",
+      "content": "## Penggunaan Listrik PT Adi Sarana Armada Tbk (2022‑2024)\n\n| Tahun | Konsumsi Listrik | Satuanumber (dokumen – halaman) |\n|-------|------------------|--------|-----------------------------|\n| **2024** | 1.251.631 | kWh | Laporan Keberlanjutan 2024 – Hal 354 (Tabel “Listrik Electricity”) |\n|  | 4.505 | GigaJoules | Laporan Keberlanjutan 2024 – Hal 354 (Tabel “Listrik Electricity”) |\n| **2023** | 1.190.375 | kWh | Laporan Keberlanjutan 2024 – Hal 354 |\n|  | 4.285 | GigaJoules | Laporan Keberlanj 2024 – Hal 354 |\n| **2022** | 1.221.896 | kWh | Laporan Keberlanjutan 2024 – Hal 354 |\n|  | 4.399 | GigaJoules | Laporan Keberlanjutan 2024 – Hal 354 |\n\n### Ringkasan\n- **Penggunaan listrik tertinggi** terjadi pada tahun **2024** dengan **1.251.631 kWh** (setara **4.505 GJ**).  \n- Pada tahun **2023**, konsumsi turun menjadi **1.190.375 kWh** (4.285 GJ).  \n- Pada tahun **2022**, konsumsi tercatat **1.221.896 kWh** (4.399 GJ).  \n\n### Catatan\n- Semua nilai di atas di‑ekstrak **hanya** dari tabel “Listrik Electricity” yang terdapat pada **Laporan Keberlanjutan 2024** PT Adi Sarana Armada Tbk, halaman **354**.  \n- Tidak ada data tambahan mengenai total kumulatif penggunaan listrik di luar rentang tahun 2022‑2024 dalam dokumen yang disediakan.  \n\n---  \n\n**Sumber**  \n- PT Adi Sarana Armada Tbk, *Laporan Keberlanjutan 2024*, halaman 354, tabel “Listrik Electricity” (kWh & GigaJoules).",
+      "timestamp": "2026-01-20T12:50:21.759898"
+    },
+    {
+      "role": "user",
+      "content": "data apa saja yang anda punya?",
+      "timestamp": "2026-01-20T13:19:11.846305"
+    },
+    {
+      "role": "assistant",
+      "content": "Berikut adalah daftar perusahaan yang datanya tersedia dalam sistem:\n\n\n**Chemicals** (4 perusahaan):\n  • PT Avia Avian Tbk\n  • PT Barito Pacific Tbk\n  • PT Chandra Asri Pacific Tbk\n  • PT ChemStar Indonesia Tbk\n\n**Energy** (2 perusahaan):\n  • PT Apexindo Pratama Duta Tbk\n  • PT ELNUSA Tbk\n\n**F&B** (4 perusahaan):\n  • PT Akasha Wira International Tbk\n  • PT Aman Agrindo Tbk\n  • PT Budi Starch & Sweetener Tbk\n  • PT Delta Djakarta Tbk\n\n**Finance** (4 perusahaan):\n  • PT Bank Amar Indonesia Tbk\n  • PT Bank Jago Tbk\n  • PT Bank OCBC NISP Tbk\n  • PT Bank Pembangunan Daerah Jawa Timur Tbk\n\n**Hospitality** (4 perusahaan):\n  • Mandarine Oriental\n  • PT ARTHAVEST Tbk\n  • PT Andalan Perkasa Abadi Tbk\n  • PT MNC Land Tbk\n\n**Mining** (3 perusahaan):\n  • PT ARCHI INDONESIA Tbk\n  • PT Adaro Andalan Indonesia Tbk\n  • PT Astrindo Nusantara Infrastruktur Tbk\n\n**Plantation** (3 perusahaan):\n  • PT Andira Agro Tbk\n  • PT Astra Agro Lestari Tbk\n  • PT Austindo Nusantara Jaya Tbk\n\n**Transportation** (4 perusahaan):\n  • PT Adi Sarana Armada Tbk\n  • PT AirAsia Indonesia Tbk\n  • PT Armada Berjaya Trans Tbk\n  • PT Batavia Prosperindo Trans Tbk\n\n---\n**Total: 28 perusahaan** dari 8 sektor\n\nAnda dapat bertanya tentang data ESG, emisi, keberlanjutan, dan informasi lainnya dari perusahaan-perusahaan di atas.",
+      "timestamp": "2026-01-20T13:19:11.849863"
+    },
+    {
+      "role": "user",
+      "content": "kumunitas apa saja yang ada dalam PT Adaro?",
+      "timestamp": "2026-01-20T13:22:32.622474"
+    },
+    {
+      "role": "assistant",
+      "content": "## Komunitas yang disebutkan dalam Laporan Tahunan 2024 PT Adaro Andalan Indonesia Tbk  \n\n| No. | Jenis/Komunitas | Keterangan singkat kegiatan / interaksi | Halaman (Dokumen) |\n|-----|-----------------|------------------------------------------|-------------------|\n| 1 | **Masyarakat umum / Nasional** | Program “ri solusi air bersih nasional yang berkelanjutan, andal, dan berdampak luas bagi masyarakat.” Adaro berperan dalam penyediaan solusi air bersih bagi masyarakat luas. | Dokumen 1 – Hal 84 |\n| 2 | **Komunitas di wilayah penambangan (komunitas lokal)** | Kegiatan reklamasi di PT Mustika Indah Permai (MIP) meliputi penanaman pohon, revegetasi, pengaturan permukaan lahan, dan rehabilitasi DAS. Kegiatan ini ditujukan untuk memperbaiki lingkungan tempat tinggal masyarakat sekitar tambang. | Dokumen 5 – Hal 180‑181 |\n| 3 | **Komunitas Daerah Aliran Sungai (DAS)** | Program rehabilitasi DAS mencakup penanaman vegetasi, pengendalian erosi, pembangunan “drop structure”, serta penyerahan lahan rehabilitasi kepada Badan Pengelolaan Daerah Aliran Sungai (BPDAS). Tujuannya adalah meningkatkan fungsi ekologi dan mengurangi risiko banjir bagi penduduk di daerah aliran sungai. | Dokumen 5 – Hal 180‑181; Dokumen 9 – Hal 84‑85 |\n| 4 | **Komunitas karyawan / pekerja** | Penyediaan “employee dorm” (asrama karyawan) melalui layanan konsultasi manajemen proyek renovasi. Menunjukkan perhatian terhadap kesejahteraan komunitas internal perusahaan. | Dokumen 9 – Hal 84‑85 |\n| 5 | **Komunitas pengguna air (pelanggan/utilitas)** | Implementasi proyek “Smart Water Meter” dan instalasi pengolahan air (Water Treatment Plant) untuk meningkatkan efisiensi penggunaan air serta memberikan manfaat bagi konsumen air di wilayah operasi. | Dokumen 8 – Hal 260‑261 |\n\n### Ringkasan\n- **Masyarakat Nasional**: Terlibat melalui inisiatif penyediaan air bersih yang berskala nasional.  \n- **Komunitas Lokal di sekitar tambang**: Diberi manfaat melalui program reklamasi, penanaman, dan rehabilitasi DAS.  \n- **Komunitas DAS**: Fokus pada pemulihan fungsi ekosistem sungai dan penyerahan lahan kepada BPDAS.  \n- **Komunitas Karyawan**: Diperhatikan lewat penyediaan fasilitas tempat tinggal (asrama).  \n- **Komunitas Pengguna Air**: Diuntungkan oleh proyek meter air pintar dan instalasi pengolahan air.\n\n> **Catatan:** Semua informasi di atas di‑ekstrak **hanya** dari dokumen yang disediakan (Laporan Tahunan 2024 PT Adaro Andalan Indonesia Tbk). Jika ada komunitas lain yang tidak tercantum dalam cuplikan dokumen ini, maka **Data tidak tersedia dalam dokumen**.\n\n---\n\n### Sumber\n- PT Adaro Andalan Indonesia Tbk, *Laporan Tahunan 2024*, halaman 84 (Dokumen 1).  \n- PT Adaro Andalan Indonesia Tbk, *Laporan Tahunan 2024*, halaman 180‑181 (Dokumen 5).  \n- PT Adaro Andalan Indonesia Tbk, *Laporan Tahunan 2024*, halaman 260‑261 (Dokumen 8).  \n- PT Adaro Andalan Indonesia Tbk, *Laporan Tahunan 2024*, halaman 84‑85 (Dokumen 9).  ",
+      "timestamp": "2026-01-20T13:22:32.622598"
+    },
+    {
+      "role": "user",
+      "content": "list perusahaanya dong",
+      "timestamp": "2026-01-20T13:24:18.846213"
+    },
+    {
+      "role": "assistant",
+      "content": "Berikut adalah daftar perusahaan yang datanya tersedia dalam sistem:\n\n\n**Chemicals** (4 perusahaan):\n  • PT Avia Avian Tbk\n  • PT Barito Pacific Tbk\n  • PT Chandra Asri Pacific Tbk\n  • PT ChemStar Indonesia Tbk\n\n**Energy** (2 perusahaan):\n  • PT Apexindo Pratama Duta Tbk\n  • PT ELNUSA Tbk\n\n**F&B** (4 perusahaan):\n  • PT Akasha Wira International Tbk\n  • PT Aman Agrindo Tbk\n  • PT Budi Starch & Sweetener Tbk\n  • PT Delta Djakarta Tbk\n\n**Finance** (4 perusahaan):\n  • PT Bank Amar Indonesia Tbk\n  • PT Bank Jago Tbk\n  • PT Bank OCBC NISP Tbk\n  • PT Bank Pembangunan Daerah Jawa Timur Tbk\n\n**Hospitality** (4 perusahaan):\n  • Mandarine Oriental\n  • PT ARTHAVEST Tbk\n  • PT Andalan Perkasa Abadi Tbk\n  • PT MNC Land Tbk\n\n**Mining** (3 perusahaan):\n  • PT ARCHI INDONESIA Tbk\n  • PT Adaro Andalan Indonesia Tbk\n  • PT Astrindo Nusantara Infrastruktur Tbk\n\n**Plantation** (3 perusahaan):\n  • PT Andira Agro Tbk\n  • PT Astra Agro Lestari Tbk\n  • PT Austindo Nusantara Jaya Tbk\n\n**Transportation** (4 perusahaan):\n  • PT Adi Sarana Armada Tbk\n  • PT AirAsia Indonesia Tbk\n  • PT Armada Berjaya Trans Tbk\n  • PT Batavia Prosperindo Trans Tbk\n\n---\n**Total: 28 perusahaan** dari 8 sektor\n\nAnda dapat bertanya tentang data ESG, emisi, keberlanjutan, dan informasi lainnya dari perusahaan-perusahaan di atas.",
+      "timestamp": "2026-01-20T13:24:18.846447"
+    }
+  ]
+}

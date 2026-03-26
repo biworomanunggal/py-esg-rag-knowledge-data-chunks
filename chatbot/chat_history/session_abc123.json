@@ -1,0 +1,46 @@
+{
+  "session_id": "abc123",
+  "created_at": "2026-01-20T12:31:49.665223",
+  "messages": [
+    {
+      "role": "user",
+      "content": "berapa total penggunaan Emisi di Bank Jago?",
+      "timestamp": "2026-01-20T12:32:04.718336"
+    },
+    {
+      "role": "assistant",
+      "content": "Maaf, tidak ditemukan dokumen yang relevan dengan pertanyaan Anda.",
+      "timestamp": "2026-01-20T12:32:04.718347"
+    },
+    {
+      "role": "user",
+      "content": "berapa jumlah penggunaan emisi bank jago?",
+      "timestamp": "2026-01-20T12:37:58.022894"
+    },
+    {
+      "role": "assistant",
+      "content": "## Total Emisi Gas Rumah Kaca (GRK) Bank Jago (2024)\n\n| Kategori Emisi | Nilai | Satuan | Tahun | Sumber |\n|----------------|-------|--------|-------|--------|\n| **Total Emisi (Scope 1 + Scope 2 + Scope 3)** | **235 924,09** | **kg CO₂e** | 2024 | PT Bank Jago Tbk – Laporan Tahunan Terintegrasi 2024, Halaman 284‑286 (Bagian “Kinerja Lingkungan”) |\n| Total Emisi (dalam ton) | 235,92 | ton CO₂e | 2024 | PT Bank Jago Tbk – Dashboard KESG Finance, Data 11 (2024) |\n\n### Penjelasan\n- **Scope 1 (diesel & bensin transportasi)**: 51 670,25 kg CO₂e  \n- **Scope 2 (listrik yang dibeli)**: 181 585,44 kg CO₂e  \n- **Scope 3 (perjalanan udara bisnis)**: 2 361,35 kg CO₂e  \n\nJumlah ketiga cakupan tersebut menghasilkan **235 924,09 kg CO₂e** (≈ 235,92 ton CO₂e) untuk tahun 2024.\n\n---\n\n## Sumber\n1. **PT Bank Jago Tbk – Laporan Tahunan Terintegrasi 2024**, Halaman 284‑286, “Kinerja Lingkungan”.  \n2. **PT Bank Jago Tbk – Dashboard KESG Finance (Data 11)**, “Emisi (Cakupan 1,2,3) – Total emisi GRK yang dihasilkan: 235,92 TonCO₂e (2024)”.",
+      "timestamp": "2026-01-20T12:37:58.023016"
+    },
+    {
+      "role": "user",
+      "content": "berapa jumlah penggunaan esg bank jago vs bank amar",
+      "timestamp": "2026-01-20T12:39:35.055469"
+    },
+    {
+      "role": "assistant",
+      "content": "## Perbandingan Ringkas ESG PT Bank Jago Tbk vs PT Bank Amar Indonesia Tbk (2024)\n\n| ESG Category | PT Bank Jago Tbk | PT Bank Amar Indonesia Tbk | Catatan |\n|--------------|------------------|----------------------------|----------|\n| **Emisi GRK (Total, ton CO₂e)** | 235,92 ton CO₂e  <br>*(Data 12, Dashboard KESG Finance, 2024)* | 915,05 ton CO₂e  <br>*(Data 11, Dashboard KESG Finance, 2024)* | – |\n| **Emisi Scope 1 (ton CO₂e)** | 51,98 ton CO₂e  <br>*(Data 12, 2024)* | 83,62 ton CO₂e  <br>*(Data 11, 2024)* | – |\n| **Emisi Scope 2 (ton CO₂e)** | 181,59 ton CO₂e  <br>*(Data 12, 2024)* | 831,43 ton CO₂e  <br>*(Data 11, 2024)* | – |\n| **Emisi Scope 3 (ton CO₂e)** | 2,36 ton CO₂e  <br>*(Data 12, 2024)* | 2,36 CO₂e  <br>*(Data 11, 2024)* | – |\n| **Konsumsi Energi (Total, GJ)** | 1 549,92 GJ  <br>*(Data 12, 2024)* | 4 370,59 GJ  <br>*(Data 11, 2024)* | – |\n| **Konsumsi Air (m³ / tahun)** | **Data tidak tersedia dalam dokumen** | 13 143 m³ / tahun  <br>*(Data 11, 2024)* | – |\n| **Limbah Kertas (ton)** | 0,01 ton  <br>*(Data 12, 2024)* | 5,58 ton  <br>*(Data 11, 2024)* | – |\n| **Jumlah Karyawan (orang)** | 530 orang  <br>*(Data 15, 2024)* | 1 246 orang  <br>*(Data14, 2024)* | – |\n| **Rasio Karyawan Perempuan (%)** | 45,66 %  <br>*(Data 15, 2024)* | 32,50 %  <br>*(Data 14, 2024)* | – |\n| **Total Jam Pelatihan (jam / tahun)** | 13 657 jam  <br>*(Data 15,  <br>*(Data 14, 2023 – data terbaru yang tersedia)* | Data 2024 untuk Amar tidak tersedia |\n| **Dana CSR (Rp / tahun)** | 1 289 018 277 Rp  <br>*(Data 15, 2024)* | 54 448 225 467 Rp  <br>*(Data 14, 2024)* | – |\n| **Persentase CSR terhadap Pendapatan** | 0,06 %  <br>*(Data 15, 2024)* | 3,13 %  <br*(Data 14, 2024)* | – |\n| **Kebijakan Anti‑korupsi** | Ada  <br>*(Data 15, 2024)* | Ada  <br>*(Data 13, 2024)* | – |\n| **Komite Keberlanjutan** | Tidak ada  <br>*(Data 15, 2024)* | Tidak ada  <br>*(Data 13, 2024)* | – |\n\n### Ringkasan Insight\n- **Emisi**: Bank Amar menghasilkan hampir **4 ×** lipat emisi GRK dibandingkan Bank Jago (915 ton vs 236 ton).  \n- **Energi**: Konsumsi energi Bank Amar juga jauh lebih tinggi (≈ 2,8 ×).  \n- **Air & Limbah**: Data konsumsi air hanya tersedia untuk Bank Amar (13 143 m³). Bank Jago mencatat **0,01 ton** limbah kertas, jauh lebih rendah daripada **5,58 ton** Bank Amar.  \n- **Sosial**: Bank Amar memiliki lebih banyak karyawan (lebih dari dua kali) namun persentase perempuan lebih rendah. Bank Jago memberikan **lebih banyak jam pelatihan** per tahun (13 657 jam vs 1 585 jam).  \n- **CSR**: Bank Amar mengalokasikan dana CSR **≈ 42 ×** lebih besar (Rp 54,4 miliar vs Rp 1,3 miliar) dan proporsinya terhadap pendapatan juga jauh lebih tinggi (3,13 % vs 0,06 %).  \n\n---\n\n## Sumber\n1. **PT Bank Jago Tbk – Dashboard KESG Finance** (Data 12), 2024 – Emisi, energi, limbah, jam pelatihan, CSR.  \n2. **PT Bank Amar Indonesia Tbk – Dashboard KESG Finance** (Data 11), 2024 – Emisi, energi, air, limbah, CSR.  \n3. **PT Bank Jago Tbk – Dashboard KESG Finance** (Data 15), 2024 – Karyawan, rasio gender, jam pelatihan, kebijakan anti‑korupsi.  \n4. **PT Bank Amar Indonesia Tbk – Dashboard KESG Finance** (Data 14), 2024 – Karyawan, rasio gender, CSR, kebijakan anti‑korupsi.  \n5. **PT Bank Amar Indonesia Tbk – Dashboard KESG Finance** (Data 13), 2024 – Tata kelola (komite, kebijakan).  ",
+      "timestamp": "2026-01-20T12:39:35.055851"
+    },
+    {
+      "role": "user",
+      "content": "erpa jumlah Emisi katadata?",
+      "timestamp": "2026-01-20T12:42:55.698687"
+    },
+    {
+      "role": "assistant",
+      "content": "**Jawaban:**  \nData tidak tersedia dalam dokumen.\n\n**Sumber:**  \n- Tidak ada dokumen yang mencantumkan informasi mengenai emisi PT Katadata (atau entitas “Katadata”) dalam kumpulan dokumen yang diberikan.",
+      "timestamp": "2026-01-20T12:42:55.698731"
+    }
+  ]
+}

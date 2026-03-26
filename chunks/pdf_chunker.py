@@ -54,6 +54,7 @@ class ChunkMetadata:
     section: str
     subsection: str
     page_range: str
+    sector: str
 
 
 @dataclass
@@ -79,6 +80,88 @@ class PDFChunker:
         # Extract company name and report type from filename
         self.company_name, self.report_type = self._parse_filename()
 
+        # Extract sector from parent directory name
+        self.sector = self._extract_sector()
+
+    def _extract_sector(self) -> str:
+        """Extract sector from parent directory name."""
+        parent_dir = self.pdf_path.parent.name
+        # If parent is 'resource', sector is unknown
+        if parent_dir.lower() == "resource":
+            return "Unknown"
+        return parent_dir
+
+    def _extract_company_from_content(self, pdf) -> Optional[str]:
+        """Extract company name from PDF content.
+
+        Searches progressively through pages until a valid company name is found.
+        Looks for patterns like:
+        - PT ... Tbk
+        - PT. ... Tbk.
+        - PT ... Tbk.
+        """
+        from collections import Counter
+
+        # Check up to 15 pages for company name
+        pages_to_check = min(15, len(pdf.pages))
+        combined_text = ""
+
+        for i in range(pages_to_check):
+            text = pdf.pages[i].extract_text() or ""
+            combined_text += " " + text
+
+        # Clean text for matching
+        combined_text = re.sub(r'\s+', ' ', combined_text)
+
+        # Patterns untuk mendeteksi nama perusahaan Indonesia
+        # Ordered by specificity - most specific first
+        patterns = [
+            # Khusus untuk Bank dengan Tbk
+            r'(PT\.?\s+Bank\s+[A-Za-z\s&\.\-]+?(?:Tbk\.?|TBK\.?))',
+            # PT dengan Tbk (perusahaan publik) - non-greedy
+            r'(PT\.?\s+[A-Z][A-Za-z\s&\.\-]+?(?:Tbk\.?|TBK\.?))',
+            # Pattern untuk nama di "adalah/is" statements (common in reports)
+            r'(?:adalah|is)\s+(PT\.?\s+[A-Z][A-Za-z\s&\.\-]+?(?:Tbk\.?|TBK\.?))',
+            # Pattern untuk nama setelah "entitas" atau "entity"
+            r'(?:entitas|entity)[^\.]*?(PT\.?\s+[A-Z][A-Za-z\s&\.\-]+?(?:Tbk\.?|TBK\.?))',
+        ]
+
+        candidates = []
+
+        for pattern in patterns:
+            matches = re.findall(pattern, combined_text, re.IGNORECASE)
+            for match in matches:
+                # Clean up the match
+                company = match.strip()
+                # Normalize PT dan Tbk
+                company = re.sub(r'^PT\.\s*', 'PT ', company)
+                company = re.sub(r'\s+', ' ', company)
+                company = re.sub(r'Tbk\.?$', 'Tbk', company, flags=re.IGNORECASE)
+                company = company.strip()
+
+                # Remove trailing punctuation
+                company = company.rstrip('.,;:')
+
+                # Filter out too short or too long names
+                if 10 < len(company) < 80:
+                    candidates.append(company)
+
+        if not candidates:
+            return None
+
+        # Count frequency of each candidate
+        freq = Counter(candidates)
+
+        # Get most common candidate
+        most_common = freq.most_common(1)
+        if most_common:
+            company_name = most_common[0][0]
+            # Final cleanup - remove trailing report type words
+            company_name = re.sub(r'\s+(SR|AR|ARSR|AR\s*&\s*SR|SR\s*&\s*AR)\s*$', '', company_name, flags=re.IGNORECASE).strip()
+            return company_name
+
+        return None
+
     def _parse_filename(self) -> Tuple[str, str]:
         """Parse company name and report type from filename."""
         filename = self.pdf_name
@@ -90,6 +173,10 @@ class PDFChunker:
         if len(parts) >= 2:
             company = parts[0].strip()
             report_type = "_".join(parts[1:]).strip()
+
+            # Clean company name - remove trailing AR/SR suffixes
+            # Handles cases like "PT Bank XYZ Tbk SR" -> "PT Bank XYZ Tbk"
+            company = re.sub(r'\s+(SR|AR|ARSR|AR\s*&\s*SR|SR\s*&\s*AR)\s*$', '', company, flags=re.IGNORECASE).strip()
 
             # Determine report type description
             if "SR" in report_type.upper():
@@ -280,14 +367,23 @@ class PDFChunker:
         """Process the PDF and generate chunks."""
         print(f"\n{'='*60}")
         print(f"Processing: {self.pdf_path.name}")
-        print(f"Company: {self.company_name}")
-        print(f"Report: {self.report_type}")
-        print(f"{'='*60}")
 
         all_chunks = []
 
         with pdfplumber.open(self.pdf_path) as pdf:
             total_pages = len(pdf.pages)
+
+            # Try to extract company name from PDF content first
+            extracted_company = self._extract_company_from_content(pdf)
+            if extracted_company:
+                print(f"Company (from PDF): {extracted_company}")
+                self.company_name = extracted_company
+            else:
+                print(f"Company (from filename): {self.company_name}")
+
+            print(f"Sector: {self.sector}")
+            print(f"Report: {self.report_type}")
+            print(f"{'='*60}")
             print(f"Total pages: {total_pages}")
 
             # Process pages in batches for better context
@@ -332,22 +428,29 @@ class PDFChunker:
                 "content": chunk_data["content"],
                 "nama_perusahaan": self.company_name,
                 "sumber_file": self.report_type,
+                "nama_file": self.pdf_path.name,
+                "sector": self.sector,
                 "metadata": {
                     "section": chunk_data["section"],
                     "subsection": chunk_data["subsection"],
-                    "page_range": chunk_data["page_range"]
+                    "page_range": chunk_data["page_range"],
+                    "sector": self.sector
                 }
             })
 
         self.chunks = final_chunks
         return final_chunks
 
+    def get_output_path(self) -> Path:
+        """Get the default output path for this PDF."""
+        safe_name = re.sub(r'[^\w\-_]', '_', self.pdf_name.lower())
+        sector_dir = OUTPUT_DIR / self.sector if self.sector and self.sector != "Unknown" else OUTPUT_DIR
+        return sector_dir / f"{safe_name}_chunks.json"
+
     def save(self, output_path: Optional[Path] = None) -> Path:
-        """Save chunks to JSON file."""
+        """Save chunks to JSON file, organized by sector subdirectory."""
         if output_path is None:
-            # Generate output filename
-            safe_name = re.sub(r'[^\w\-_]', '_', self.pdf_name.lower())
-            output_path = OUTPUT_DIR / f"{safe_name}_chunks.json"
+            output_path = self.get_output_path()
 
         # Ensure output directory exists
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -359,26 +462,69 @@ class PDFChunker:
         return output_path
 
 
-def process_all_pdfs(resource_dir: Path = RESOURCE_DIR) -> Dict[str, Path]:
-    """Process all PDFs in resource directory."""
+def process_all_pdfs(resource_dir: Path = RESOURCE_DIR, sectors: Optional[List[str]] = None, force: bool = False) -> Dict[str, Path]:
+    """Process all PDFs in resource directory (recursively searches sector subdirectories).
+
+    Args:
+        resource_dir: Path to resource directory.
+        sectors: Optional list of sector names to filter (case-insensitive).
+                 If None, process all sectors.
+        force: If True, regenerate even if output JSON already exists.
+    """
     results = {}
 
     if not resource_dir.exists():
         print(f"Resource directory not found: {resource_dir}")
         return results
 
-    pdf_files = list(resource_dir.glob("*.pdf"))
+    # Search recursively for PDFs in all subdirectories (sector folders)
+    pdf_files = list(resource_dir.glob("**/*.pdf"))
 
     if not pdf_files:
         print(f"No PDF files found in: {resource_dir}")
         return results
 
+    # Group PDFs by sector for display
+    sector_files = {}
+    for pdf_path in pdf_files:
+        sector = pdf_path.parent.name
+        if sector == resource_dir.name:
+            sector = "Root"
+        if sector not in sector_files:
+            sector_files[sector] = []
+        sector_files[sector].append(pdf_path)
+
+    # Filter by selected sectors
+    if sectors:
+        sectors_lower = [s.lower() for s in sectors]
+        available_sectors = list(sector_files.keys())
+        matched = {s for s in available_sectors if s.lower() in sectors_lower}
+        unmatched = [s for s in sectors if s.lower() not in [a.lower() for a in available_sectors]]
+        if unmatched:
+            print(f"\nWarning: Sector not found: {', '.join(unmatched)}")
+            print(f"Available sectors: {', '.join(available_sectors)}")
+        sector_files = {s: files for s, files in sector_files.items() if s in matched}
+        pdf_files = [f for files in sector_files.values() for f in files]
+
     print(f"\nFound {len(pdf_files)} PDF files to process")
     print("="*60)
+    for sector, files in sector_files.items():
+        print(f"  {sector}: {len(files)} files")
+    print("="*60)
 
+    skipped_count = 0
     for pdf_path in pdf_files:
         try:
             chunker = PDFChunker(str(pdf_path))
+            output_path = chunker.get_output_path()
+
+            # Skip if output JSON already exists (unless --force)
+            if not force and output_path.exists():
+                print(f"  Skip (already exists): {output_path.name}")
+                skipped_count += 1
+                results[pdf_path.name] = output_path
+                continue
+
             chunks = chunker.process()
             output_path = chunker.save()
             results[pdf_path.name] = output_path
@@ -390,6 +536,9 @@ def process_all_pdfs(resource_dir: Path = RESOURCE_DIR) -> Dict[str, Path]:
             print(f"Error processing {pdf_path.name}: {str(e)}")
             import traceback
             traceback.print_exc()
+
+    if skipped_count:
+        print(f"\nSkipped {skipped_count} files (already chunked)")
 
     return results
 
@@ -408,6 +557,16 @@ def main():
         "--output",
         type=str,
         help="Path output file JSON (opsional)"
+    )
+    parser.add_argument(
+        "--sector",
+        type=str,
+        help="Sector yang akan diproses, pisahkan dengan koma (contoh: Finance,Mining)"
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Paksa generate ulang meskipun file JSON sudah ada"
     )
 
     args = parser.parse_args()
@@ -432,8 +591,9 @@ def main():
         print(f"\nTotal chunks: {len(chunks)}")
 
     else:
-        # Process all PDFs in resource directory
-        results = process_all_pdfs()
+        # Process PDFs in resource directory (optionally filtered by sector)
+        sectors = [s.strip() for s in args.sector.split(",")] if args.sector else None
+        results = process_all_pdfs(sectors=sectors, force=args.force)
 
         print("\n" + "="*60)
         print("  SUMMARY")

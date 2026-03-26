@@ -69,7 +69,7 @@ def load_chunked_data() -> list:
         print(f"Directory not found: {CHUNKED_DATA_DIR}")
         return all_chunks
 
-    for json_file in CHUNKED_DATA_DIR.glob("*.json"):
+    for json_file in CHUNKED_DATA_DIR.glob("**/*.json"):
         print(f"Loading: {json_file.name}")
         with open(json_file, "r", encoding="utf-8") as f:
             chunks = json.load(f)
@@ -105,6 +105,8 @@ def main():
         content = chunk.get("content", "")
         nama_perusahaan = chunk.get("nama_perusahaan", "")
         sumber_file = chunk.get("sumber_file", "")
+        nama_file = chunk.get("nama_file", "")
+        sector = chunk.get("sector", "")
         metadata = chunk.get("metadata", {})
 
         point_id = generate_point_id(content, nama_perusahaan, sumber_file)
@@ -119,6 +121,8 @@ def main():
             "content": content,
             "nama_perusahaan": nama_perusahaan,
             "sumber_file": sumber_file,
+            "nama_file": nama_file,
+            "sector": sector,
             "metadata": metadata
         }
 

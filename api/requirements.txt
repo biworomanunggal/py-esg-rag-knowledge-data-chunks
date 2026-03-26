@@ -1,0 +1,12 @@
+# FastAPI and server
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.5.0
+
+# ML and Vector DB (same as main project)
+sentence-transformers>=2.2.0
+qdrant-client>=1.6.0
+
+# Utilities
+python-dotenv>=1.0.0
+requests>=2.31.0

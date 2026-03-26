@@ -1,0 +1,16 @@
+{
+  "session_id": "abc1231",
+  "created_at": "2026-01-20T12:46:50.647593",
+  "messages": [
+    {
+      "role": "user",
+      "content": "berapa jumlah Emisi bank jago, bank jatim, dan bank ocbc?",
+      "timestamp": "2026-01-20T12:46:52.502740"
+    },
+    {
+      "role": "assistant",
+      "content": "Mohon maaf, saat ini sistem hanya mendukung perbandingan maksimal 2 perusahaan sekaligus. Anda menyebutkan 3 perusahaan: PT Bank Jago Tbk, PT Bank Pembangunan Daerah Jawa Timur Tbk, PT Bank OCBC NISP Tbk.\n\nSilakan ajukan pertanyaan perbandingan dengan maksimal 2 perusahaan, misalnya:\n  • \"Bandingkan emisi PT Bank Jago Tbk dan PT Bank Pembangunan Daerah Jawa Timur Tbk\"\n  • \"Apa perbedaan keberlanjutan PT Bank Jago Tbk vs PT Bank Pembangunan Daerah Jawa Timur Tbk?\"",
+      "timestamp": "2026-01-20T12:46:52.502804"
+    }
+  ]
+}

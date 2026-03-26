@@ -13,24 +13,30 @@ Advanced RAG Chatbot untuk ESG Assistance dengan fitur:
 import os
 import re
 import json
+import uuid
 import requests
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 from sentence_transformers import SentenceTransformer
 
-load_dotenv()
+# Load .env from project root
+PROJECT_ROOT = Path(__file__).parent.parent
+load_dotenv(PROJECT_ROOT / ".env")
 
 # Configuration
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
-COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "esg_chatbot")
+COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "esg_reports")
+COLLECTION_DATA_NAME = os.getenv("QDRANT_COLLECTION_DATA_NAME", "esg_data_reports")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-base")
 SCORE_THRESHOLD = float(os.getenv("SCORE_THRESHOLD", 0.3))
+RERANK_TOP_K = 10
+RERANK_DATA_TOP_K = 5  # Top K untuk data collection (Excel)
 
 MODEL_ARK_API_KEY = os.getenv("MODEL_ARK_API_KEY")
 MODEL_ARK_API_URL = os.getenv("MODEL_ARK_API_URL")
@@ -38,31 +44,184 @@ MODEL_ARK_LLM_NAME = os.getenv("MODEL_ARK_LLM_NAME")
 
 CHATBOT_DIR = Path(__file__).parent
 OUTPUT_FILE = CHATBOT_DIR / "chat_canggih_results.json"
+HISTORY_DIR = CHATBOT_DIR / "chat_history"
 
-# Company mapping dengan variasi nama
+# Chat history configuration
+MAX_HISTORY_MESSAGES = 10  # Maximum messages to keep in context (to avoid token overflow)
+
+# Company mapping dengan variasi nama - organized by sector
+# Nama perusahaan harus sama persis dengan yang ada di chunked_data
 COMPANY_MAP = {
-    # Bank Jago variants
+    # ============== FINANCE SECTOR ==============
+    # Bank Jago
     "bank jago": "PT Bank Jago Tbk",
     "jago": "PT Bank Jago Tbk",
     "pt bank jago": "PT Bank Jago Tbk",
-    # Bank Jatim variants
+    # Bank Jatim
     "bank jatim": "PT Bank Pembangunan Daerah Jawa Timur Tbk",
     "jatim": "PT Bank Pembangunan Daerah Jawa Timur Tbk",
     "bpd jatim": "PT Bank Pembangunan Daerah Jawa Timur Tbk",
     "bank pembangunan daerah jawa timur": "PT Bank Pembangunan Daerah Jawa Timur Tbk",
-    # Bank OCBC NISP variants
+    # Bank OCBC NISP
     "ocbc": "PT Bank OCBC NISP Tbk",
     "ocbc nisp": "PT Bank OCBC NISP Tbk",
     "bank ocbc": "PT Bank OCBC NISP Tbk",
     "bank ocbc nisp": "PT Bank OCBC NISP Tbk",
     "nisp": "PT Bank OCBC NISP Tbk",
     "pt bank ocbc nisp": "PT Bank OCBC NISP Tbk",
-    # Bank Amar Indonesia variants
-    "amar": "PT. Bank Amar Indonesia Tbk",
-    "bank amar": "PT. Bank Amar Indonesia Tbk",
-    "amar bank": "PT. Bank Amar Indonesia Tbk",
-    "bank amar indonesia": "PT. Bank Amar Indonesia Tbk",
-    "pt bank amar": "PT. Bank Amar Indonesia Tbk",
+    # Bank Amar Indonesia
+    "amar": "PT Bank Amar Indonesia Tbk",
+    "bank amar": "PT Bank Amar Indonesia Tbk",
+    "amar bank": "PT Bank Amar Indonesia Tbk",
+    "bank amar indonesia": "PT Bank Amar Indonesia Tbk",
+    "pt bank amar": "PT Bank Amar Indonesia Tbk",
+
+    # ============== MINING SECTOR ==============
+    # Adaro Andalan Indonesia (dari chunked_data)
+    "adaro": "PT Adaro Andalan Indonesia Tbk",
+    "adaro energy": "PT Adaro Andalan Indonesia Tbk",
+    "adaro andalan": "PT Adaro Andalan Indonesia Tbk",
+    "pt adaro": "PT Adaro Andalan Indonesia Tbk",
+    "aadi": "PT Adaro Andalan Indonesia Tbk",
+    # Archi Indonesia (uppercase di chunked_data)
+    "archi": "PT ARCHI INDONESIA Tbk",
+    "archi indonesia": "PT ARCHI INDONESIA Tbk",
+    "pt archi": "PT ARCHI INDONESIA Tbk",
+    # Astrindo Nusantara Infrastruktur
+    "astrindo": "PT Astrindo Nusantara Infrastruktur Tbk",
+    "astrindo nusantara": "PT Astrindo Nusantara Infrastruktur Tbk",
+    "pt astrindo": "PT Astrindo Nusantara Infrastruktur Tbk",
+
+    # ============== ENERGY SECTOR ==============
+    # Apexindo Pratama Duta
+    "apexindo": "PT Apexindo Pratama Duta Tbk",
+    "apex": "PT Apexindo Pratama Duta Tbk",
+    "apexindo pratama": "PT Apexindo Pratama Duta Tbk",
+    # Elnusa (uppercase di chunked_data)
+    "elnusa": "PT ELNUSA Tbk",
+    "pt elnusa": "PT ELNUSA Tbk",
+    "elsa": "PT ELNUSA Tbk",
+
+    # ============== PLANTATION SECTOR ==============
+    # Andira Agro
+    "andira": "PT Andira Agro Tbk",
+    "andira agro": "PT Andira Agro Tbk",
+    "pt andira": "PT Andira Agro Tbk",
+    # Astra Agro Lestari
+    "astra agro": "PT Astra Agro Lestari Tbk",
+    "astra agro lestari": "PT Astra Agro Lestari Tbk",
+    "aal": "PT Astra Agro Lestari Tbk",
+    "pt astra agro": "PT Astra Agro Lestari Tbk",
+    # Austindo Nusantara Jaya
+    "austindo": "PT Austindo Nusantara Jaya Tbk",
+    "anj": "PT Austindo Nusantara Jaya Tbk",
+    "austindo nusantara": "PT Austindo Nusantara Jaya Tbk",
+
+    # ============== TRANSPORTATION SECTOR ==============
+    # Adi Sarana Armada
+    "assa": "PT Adi Sarana Armada Tbk",
+    "adi sarana": "PT Adi Sarana Armada Tbk",
+    "adi sarana armada": "PT Adi Sarana Armada Tbk",
+    # AirAsia Indonesia
+    "airasia": "PT AirAsia Indonesia Tbk",
+    "airasia indonesia": "PT AirAsia Indonesia Tbk",
+    "air asia": "PT AirAsia Indonesia Tbk",
+    # Armada Berjaya Trans
+    "armada berjaya": "PT Armada Berjaya Trans Tbk",
+    "armada berjaya trans": "PT Armada Berjaya Trans Tbk",
+    # Batavia Prosperindo Trans
+    "batavia": "PT Batavia Prosperindo Trans Tbk",
+    "batavia prosperindo": "PT Batavia Prosperindo Trans Tbk",
+
+    # ============== F&B SECTOR ==============
+    # Delta Djakarta
+    "delta": "PT Delta Djakarta Tbk",
+    "delta djakarta": "PT Delta Djakarta Tbk",
+    "pt delta": "PT Delta Djakarta Tbk",
+    # Akasha Wira International
+    "akasha": "PT Akasha Wira International Tbk",
+    "akasha wira": "PT Akasha Wira International Tbk",
+    "ades": "PT Akasha Wira International Tbk",
+    # Aman Agrindo
+    "aman agrindo": "PT Aman Agrindo Tbk",
+    "pt aman agrindo": "PT Aman Agrindo Tbk",
+    # Budi Starch & Sweetener
+    "budi starch": "PT Budi Starch & Sweetener Tbk",
+    "budi": "PT Budi Starch & Sweetener Tbk",
+    "budi sweetener": "PT Budi Starch & Sweetener Tbk",
+
+    # ============== CHEMICALS SECTOR ==============
+    # Avia Avian
+    "avian": "PT Avia Avian Tbk",
+    "avia avian": "PT Avia Avian Tbk",
+    "avia": "PT Avia Avian Tbk",
+    # Barito Pacific
+    "barito": "PT Barito Pacific Tbk",
+    "barito pacific": "PT Barito Pacific Tbk",
+    "brpt": "PT Barito Pacific Tbk",
+    # Chandra Asri Pacific
+    "chandra asri": "PT Chandra Asri Pacific Tbk",
+    "chandra asri pacific": "PT Chandra Asri Pacific Tbk",
+    "tpia": "PT Chandra Asri Pacific Tbk",
+    # Chemstar Indonesia (perhatikan: ChemStar dengan S besar)
+    "chemstar": "PT ChemStar Indonesia Tbk",
+    "chemstar indonesia": "PT ChemStar Indonesia Tbk",
+
+    # ============== HOSPITALITY SECTOR ==============
+    # Mandarine Oriental
+    "mandarine": "Mandarine Oriental",
+    "mandarine oriental": "Mandarine Oriental",
+    "moil": "Mandarine Oriental",
+    # MNC Land
+    "mnc land": "PT MNC Land Tbk",
+    "mnc": "PT MNC Land Tbk",
+    # Andalan Perkasa Abadi
+    "andalan perkasa": "PT Andalan Perkasa Abadi Tbk",
+    "andalan perkasa abadi": "PT Andalan Perkasa Abadi Tbk",
+    # Arthavest (uppercase di chunked_data)
+    "arthavest": "PT ARTHAVEST Tbk",
+    "pt arthavest": "PT ARTHAVEST Tbk",
+}
+
+# Mapping company to sector untuk filter
+# Nama perusahaan harus sama persis dengan yang ada di chunked_data
+COMPANY_SECTOR_MAP = {
+    # Finance
+    "PT Bank Jago Tbk": "Finance",
+    "PT Bank Pembangunan Daerah Jawa Timur Tbk": "Finance",
+    "PT Bank OCBC NISP Tbk": "Finance",
+    "PT Bank Amar Indonesia Tbk": "Finance",
+    # Mining
+    "PT Adaro Andalan Indonesia Tbk": "Mining",
+    "PT ARCHI INDONESIA Tbk": "Mining",
+    "PT Astrindo Nusantara Infrastruktur Tbk": "Mining",
+    # Energy
+    "PT Apexindo Pratama Duta Tbk": "Energy",
+    "PT ELNUSA Tbk": "Energy",
+    # Plantation
+    "PT Andira Agro Tbk": "Plantation",
+    "PT Astra Agro Lestari Tbk": "Plantation",
+    "PT Austindo Nusantara Jaya Tbk": "Plantation",
+    # Transportation
+    "PT Adi Sarana Armada Tbk": "Transportation",
+    "PT AirAsia Indonesia Tbk": "Transportation",
+    "PT Armada Berjaya Trans Tbk": "Transportation",
+    "PT Batavia Prosperindo Trans Tbk": "Transportation",
+    # F&B
+    "PT Delta Djakarta Tbk": "F&B",
+    "PT Akasha Wira International Tbk": "F&B",
+    "PT Aman Agrindo Tbk": "F&B",
+    "PT Budi Starch & Sweetener Tbk": "F&B",
+    # Chemicals
+    "PT Avia Avian Tbk": "Chemicals",
+    "PT Barito Pacific Tbk": "Chemicals",
+    "PT Chandra Asri Pacific Tbk": "Chemicals",
+    "PT ChemStar Indonesia Tbk": "Chemicals",
+    # Hospitality
+    "Mandarine Oriental": "Hospitality",
+    "PT MNC Land Tbk": "Hospitality",
+    "PT Andalan Perkasa Abadi Tbk": "Hospitality",
+    "PT ARTHAVEST Tbk": "Hospitality",
 }
 
 # ESG Topic keywords untuk query expansion - diperluas dengan variasi dalam dokumen
@@ -70,41 +229,145 @@ ESG_TOPICS = {
     "emisi": {
         "keywords": ["emisi", "grk", "ghg", "karbon", "carbon", "co2", "scope 1", "scope 2", "scope 3",
                     "cakupan 1", "cakupan 2", "cakupan 3", "gas rumah kaca", "greenhouse", "ton co2",
-                    "intensitas emisi", "emission", "pengurangan emisi"],
-        "search_queries": ["emisi GRK scope", "total emisi cakupan", "jumlah emisi GRK"],
-        "related_sections": ["Kinerja Keberlanjutan", "Keberlanjutan", "Aspek Emisi"]
+                    "intensitas emisi", "emission", "pengurangan emisi", "net zero", "carbon footprint",
+                    "jejak karbon", "nol emisi", "dekarbonisasi", "ton coeq", "tco2e", "metana", "ch4", "n2o"],
+        "search_queries": ["emisi GRK scope", "total emisi cakupan", "jumlah emisi GRK", "intensitas emisi"],
+        "related_sections": ["Kinerja Keberlanjutan", "Keberlanjutan", "Aspek Emisi", "Kinerja Lingkungan"]
     },
     "energi": {
-        "keywords": ["energi", "energy", "listrik", "electricity", "kwh", "mwh", "gigajoule",
-                    "konsumsi energi", "bbm", "solar", "terajoule", "konsumsi listrik"],
-        "search_queries": ["konsumsi energi", "penggunaan listrik"],
-        "related_sections": ["Kinerja Keberlanjutan", "Keberlanjutan"]
+        "keywords": ["energi", "energy", "listrik", "electricity", "kwh", "mwh", "gigajoule", "gj",
+                    "konsumsi energi", "bbm", "solar", "terajoule", "konsumsi listrik", "energi terbarukan",
+                    "renewable", "panel surya", "solar panel", "efisiensi energi", "intensitas energi"],
+        "search_queries": ["konsumsi energi", "penggunaan listrik", "total energi"],
+        "related_sections": ["Kinerja Keberlanjutan", "Keberlanjutan", "Kinerja Lingkungan"]
     },
     "air": {
-        "keywords": ["air", "water", "pdam", "konsumsi air", "m3", "penggunaan air"],
-        "search_queries": ["konsumsi air", "penggunaan air"],
-        "related_sections": ["Kinerja Keberlanjutan", "Keberlanjutan"]
+        "keywords": ["air", "water", "pdam", "konsumsi air", "m3", "penggunaan air", "air bersih",
+                    "air tanah", "daur ulang air", "water recycling", "intensitas air", "efisiensi air"],
+        "search_queries": ["konsumsi air", "penggunaan air", "pengelolaan air"],
+        "related_sections": ["Kinerja Keberlanjutan", "Keberlanjutan", "Kinerja Lingkungan"]
     },
     "limbah": {
-        "keywords": ["limbah", "waste", "sampah", "b3", "efluen", "pengelolaan limbah"],
-        "search_queries": ["pengelolaan limbah", "limbah b3"],
-        "related_sections": ["Kinerja Keberlanjutan", "Keberlanjutan"]
+        "keywords": ["limbah", "waste", "sampah", "b3", "efluen", "pengelolaan limbah", "hazardous waste",
+                    "limbah berbahaya", "daur ulang", "recycling", "reduce", "reuse", "circular economy",
+                    "3r", "pengolahan limbah", "tpa", "landfill"],
+        "search_queries": ["pengelolaan limbah", "limbah b3", "total limbah"],
+        "related_sections": ["Kinerja Keberlanjutan", "Keberlanjutan", "Kinerja Lingkungan"]
     },
     "karyawan": {
         "keywords": ["karyawan", "employee", "pegawai", "sdm", "human capital", "tenaga kerja",
-                    "pekerja", "jumlah karyawan", "total karyawan", "pelatihan"],
-        "search_queries": ["jumlah karyawan", "total pegawai", "komposisi karyawan"],
-        "related_sections": ["Sumber Daya Manusia", "Kinerja Keberlanjutan", "Profil Perusahaan"]
+                    "pekerja", "jumlah karyawan", "total karyawan", "pelatihan", "training",
+                    "turnover", "rekrutmen", "recruitment", "keberagaman", "diversity", "inklusi",
+                    "gender", "perempuan", "pria", "jam pelatihan", "training hours"],
+        "search_queries": ["jumlah karyawan", "total pegawai", "komposisi karyawan", "demografi karyawan"],
+        "related_sections": ["Sumber Daya Manusia", "Kinerja Keberlanjutan", "Profil Perusahaan", "Kinerja Sosial"]
+    },
+    "k3": {
+        "keywords": ["k3", "keselamatan", "kesehatan kerja", "ohs", "occupational health", "safety",
+                    "kecelakaan kerja", "fatality", "ltir", "trir", "lost time injury", "zero accident",
+                    "nihil kecelakaan", "cidera", "injury", "near miss"],
+        "search_queries": ["keselamatan kerja", "kecelakaan kerja", "kinerja k3"],
+        "related_sections": ["Kinerja K3", "Keselamatan Kerja", "HSE"]
     },
     "tata_kelola": {
-        "keywords": ["tata kelola", "governance", "direksi", "komisaris", "komite", "audit", "gcg"],
-        "search_queries": ["tata kelola perusahaan", "good corporate governance"],
-        "related_sections": ["Tata Kelola", "Audit Internal", "Komite Audit"]
+        "keywords": ["tata kelola", "governance", "direksi", "komisaris", "komite", "audit", "gcg",
+                    "corporate governance", "transparansi", "akuntabilitas", "responsibility",
+                    "independensi", "fairness", "anti korupsi", "etika bisnis"],
+        "search_queries": ["tata kelola perusahaan", "good corporate governance", "struktur governance"],
+        "related_sections": ["Tata Kelola", "Audit Internal", "Komite Audit", "GCG"]
     },
     "keuangan": {
-        "keywords": ["keuangan", "financial", "pendapatan", "laba", "aset", "modal", "rupiah"],
-        "search_queries": ["kinerja keuangan", "pendapatan bunga"],
-        "related_sections": ["Tinjauan Keuangan", "Ikhtisar Keuangan", "Laporan Keuangan"]
+        "keywords": ["keuangan", "financial", "pendapatan", "laba", "aset", "modal", "rupiah",
+                    "revenue", "profit", "ekuitas", "equity", "triliun", "miliar", "billion",
+                    "pertumbuhan", "growth", "dividen"],
+        "search_queries": ["kinerja keuangan", "pendapatan", "laba bersih"],
+        "related_sections": ["Tinjauan Keuangan", "Ikhtisar Keuangan", "Laporan Keuangan", "Kinerja Ekonomi"]
+    },
+    "sosial_masyarakat": {
+        "keywords": ["csr", "tanggung jawab sosial", "community", "masyarakat", "pemberdayaan",
+                    "social investment", "investasi sosial", "donasi", "bantuan", "penerima manfaat",
+                    "beneficiaries", "pengembangan komunitas", "community development"],
+        "search_queries": ["tanggung jawab sosial", "pengembangan masyarakat", "csr"],
+        "related_sections": ["Kinerja Sosial", "CSR", "Community Development", "Tanggung Jawab Sosial"]
+    },
+    "biodiversitas": {
+        "keywords": ["biodiversitas", "biodiversity", "keanekaragaman hayati", "flora", "fauna",
+                    "ekosistem", "ecosystem", "konservasi", "conservation", "hutan", "forest",
+                    "spesies", "species", "habitat", "rewilding"],
+        "search_queries": ["keanekaragaman hayati", "konservasi", "biodiversitas"],
+        "related_sections": ["Kinerja Lingkungan", "Biodiversitas", "Konservasi"]
+    }
+}
+
+# Sector-specific ESG topics dengan keywords dan metrics khusus per industri
+SECTOR_SPECIFIC_TOPICS = {
+    "Finance": {
+        "keywords": ["pembiayaan hijau", "green financing", "sustainable finance", "kredit hijau",
+                    "green bond", "obligasi hijau", "portofolio berkelanjutan", "sustainable portfolio",
+                    "kredit umkm", "inklusi keuangan", "financial inclusion", "literasi keuangan",
+                    "digital banking", "fintech", "npl", "car", "bopo", "nim"],
+        "metrics": ["pembiayaan berkelanjutan", "portofolio hijau", "kredit usaha rakyat"],
+        "esg_focus": ["sustainable lending", "green portfolio", "financial inclusion"]
+    },
+    "Mining": {
+        "keywords": ["reklamasi", "revegetasi", "tambang", "mine", "batubara", "coal", "mineral",
+                    "overburden", "stripping ratio", "produksi tambang", "cadangan", "reserves",
+                    "debu", "dust", "air asam tambang", "acid mine drainage", "rehabilitasi lahan",
+                    "post mining", "pasca tambang", "izin pinjam pakai kawasan hutan", "ippkh"],
+        "metrics": ["luas reklamasi", "produksi batubara", "cadangan mineral", "revegetasi"],
+        "esg_focus": ["land rehabilitation", "mine closure", "community resettlement"]
+    },
+    "Energy": {
+        "keywords": ["migas", "oil and gas", "minyak bumi", "gas alam", "pengeboran", "drilling",
+                    "eksplorasi", "exploration", "produksi minyak", "oil production", "barrel",
+                    "bph", "mmscfd", "energi terbarukan", "renewable energy", "ebt", "geothermal",
+                    "panas bumi", "plts", "energi surya", "transisi energi", "energy transition"],
+        "metrics": ["produksi migas", "lifting minyak", "kapasitas energi terbarukan"],
+        "esg_focus": ["energy transition", "flaring reduction", "methane reduction"]
+    },
+    "Plantation": {
+        "keywords": ["sawit", "palm oil", "cpo", "crude palm oil", "kebun", "plantation", "tbs",
+                    "fresh fruit bunch", "rendemen", "rspo", "ispo", "sustainable palm oil",
+                    "ndpe", "no deforestation", "hcv", "high conservation value", "hcs",
+                    "high carbon stock", "smallholder", "petani plasma", "petani swadaya",
+                    "lahan gambut", "peatland", "kebakaran lahan", "land fire", "replanting"],
+        "metrics": ["produksi cpo", "luas kebun", "produktivitas tbs", "sertifikasi rspo"],
+        "esg_focus": ["sustainable palm oil", "no deforestation", "smallholder inclusion"]
+    },
+    "Transportation": {
+        "keywords": ["armada", "fleet", "kendaraan", "vehicle", "logistik", "logistics",
+                    "pengiriman", "delivery", "bbm", "fuel", "efisiensi bahan bakar", "fuel efficiency",
+                    "kendaraan listrik", "electric vehicle", "ev", "emisi transportasi", "transport emission",
+                    "aviation", "penerbangan", "pesawat", "aircraft", "rute", "route"],
+        "metrics": ["jumlah armada", "efisiensi bbm", "armada listrik", "emisi per km"],
+        "esg_focus": ["fleet electrification", "fuel efficiency", "green logistics"]
+    },
+    "F&B": {
+        "keywords": ["makanan", "food", "minuman", "beverage", "kemasan", "packaging", "plastik",
+                    "plastic", "daur ulang kemasan", "packaging recycling", "food safety",
+                    "keamanan pangan", "halal", "nutrisi", "nutrition", "gula", "sugar",
+                    "bahan baku", "raw material", "pertanian", "agriculture", "pasokan berkelanjutan",
+                    "sustainable sourcing", "food waste", "sampah makanan"],
+        "metrics": ["produksi makanan", "kemasan daur ulang", "sertifikasi halal"],
+        "esg_focus": ["sustainable packaging", "food safety", "responsible sourcing"]
+    },
+    "Chemicals": {
+        "keywords": ["petrokimia", "petrochemical", "olefin", "polyethylene", "polypropylene",
+                    "polymer", "resin", "cat", "paint", "coating", "bahan kimia", "chemical",
+                    "emisi proses", "process emission", "gas buang", "flue gas", "efluen",
+                    "effluent", "spill", "tumpahan", "bahan berbahaya", "hazardous material",
+                    "product stewardship", "responsible care"],
+        "metrics": ["produksi petrokimia", "emisi industri", "limbah kimia"],
+        "esg_focus": ["process safety", "chemical management", "circular economy"]
+    },
+    "Hostpitality": {
+        "keywords": ["hotel", "resort", "hospitality", "properti", "property", "kamar", "room",
+                    "okupansi", "occupancy", "tamu", "guest", "pariwisata", "tourism",
+                    "green hotel", "hotel hijau", "single use plastic", "plastik sekali pakai",
+                    "food waste hotel", "limbah hotel", "linen", "laundry", "air minum kemasan",
+                    "amenities", "energy hotel"],
+        "metrics": ["tingkat okupansi", "konsumsi energi per kamar", "pengurangan plastik"],
+        "esg_focus": ["green building", "waste reduction", "sustainable tourism"]
     }
 }
 
@@ -148,6 +411,7 @@ class SearchResult:
     page: str
     section: str
     subsection: str = ""
+    source_type: str = "pdf"  # "pdf" or "data" (Excel)
 
 
 @dataclass
@@ -158,6 +422,11 @@ class QueryAnalysis:
     topics: List[str]
     is_comparison: bool
     expanded_query: str
+    sectors: List[str] = None  # Detected sectors
+
+    def __post_init__(self):
+        if self.sectors is None:
+            self.sectors = []
 
 
 @dataclass
@@ -186,13 +455,68 @@ class TokenStats:
         }
 
 
+@dataclass
+class ChatMessage:
+    """Single chat message."""
+    role: str  # "user" or "assistant"
+    content: str
+    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+
+
+@dataclass
+class ChatSession:
+    """Chat session dengan unique ID dan history."""
+    session_id: str
+    created_at: str
+    messages: List[ChatMessage] = field(default_factory=list)
+
+    def add_message(self, role: str, content: str):
+        """Add a message to the session."""
+        self.messages.append(ChatMessage(role=role, content=content))
+
+    def get_history_for_llm(self, max_messages: int = MAX_HISTORY_MESSAGES) -> List[Dict]:
+        """Get recent messages formatted for LLM API."""
+        recent_messages = self.messages[-max_messages:] if len(self.messages) > max_messages else self.messages
+        return [{"role": msg.role, "content": msg.content} for msg in recent_messages]
+
+    def to_dict(self) -> Dict:
+        """Convert session to dictionary for JSON serialization."""
+        return {
+            "session_id": self.session_id,
+            "created_at": self.created_at,
+            "messages": [
+                {"role": msg.role, "content": msg.content, "timestamp": msg.timestamp}
+                for msg in self.messages
+            ]
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "ChatSession":
+        """Create session from dictionary."""
+        session = cls(
+            session_id=data["session_id"],
+            created_at=data["created_at"]
+        )
+        for msg_data in data.get("messages", []):
+            msg = ChatMessage(
+                role=msg_data["role"],
+                content=msg_data["content"],
+                timestamp=msg_data.get("timestamp", datetime.now().isoformat())
+            )
+            session.messages.append(msg)
+        return session
+
+
 class ESGChatbotCanggih:
     """Advanced ESG RAG Chatbot."""
 
-    def __init__(self):
+    def __init__(self, session_id: Optional[str] = None):
         self._print_banner()
         self._initialize_components()
         self.token_stats = TokenStats()
+
+        # Initialize or load chat session
+        self.current_session = self._init_session(session_id)
 
     def _print_banner(self):
         print("=" * 70)
@@ -214,9 +538,189 @@ class ESGChatbotCanggih:
         print(f"  → Qdrant: {QDRANT_HOST}:{QDRANT_PORT}")
         self.qdrant = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
-        print(f"  → Collection: {COLLECTION_NAME}")
+        print(f"  → Collection (PDF): {COLLECTION_NAME}")
+        print(f"  → Collection (Data): {COLLECTION_DATA_NAME}")
         print(f"  → LLM: {MODEL_ARK_LLM_NAME}")
         print("\n[Init] Ready!\n")
+
+    # ==================== SESSION MANAGEMENT ====================
+
+    def _init_session(self, session_id: Optional[str] = None) -> ChatSession:
+        """Initialize or load a chat session."""
+        HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+
+        if session_id:
+            # Try to load existing session
+            session = self._load_session(session_id)
+            if session:
+                print(f"[Session] Loaded existing session: {session_id}")
+                print(f"[Session] History: {len(session.messages)} messages")
+                return session
+            else:
+                print(f"[Session] Session {session_id} not found, creating new...")
+
+        # Create new session
+        new_id = session_id or str(uuid.uuid4())[:8]
+        session = ChatSession(
+            session_id=new_id,
+            created_at=datetime.now().isoformat()
+        )
+        print(f"[Session] Created new session: {new_id}")
+        return session
+
+    def _get_session_path(self, session_id: str) -> Path:
+        """Get the file path for a session."""
+        return HISTORY_DIR / f"session_{session_id}.json"
+
+    def _load_session(self, session_id: str) -> Optional[ChatSession]:
+        """Load a session from file."""
+        session_path = self._get_session_path(session_id)
+        if session_path.exists():
+            try:
+                with open(session_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                return ChatSession.from_dict(data)
+            except Exception as e:
+                print(f"[Session] Error loading session: {e}")
+        return None
+
+    def _save_session(self):
+        """Save current session to file."""
+        session_path = self._get_session_path(self.current_session.session_id)
+        try:
+            with open(session_path, "w", encoding="utf-8") as f:
+                json.dump(self.current_session.to_dict(), f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"[Session] Error saving session: {e}")
+
+    def new_session(self, session_id: Optional[str] = None) -> str:
+        """Create a new chat session."""
+        # Save current session first
+        if self.current_session.messages:
+            self._save_session()
+
+        # Create new session
+        new_id = session_id or str(uuid.uuid4())[:8]
+        self.current_session = ChatSession(
+            session_id=new_id,
+            created_at=datetime.now().isoformat()
+        )
+        self.token_stats = TokenStats()
+        print(f"[Session] New session created: {new_id}")
+        return new_id
+
+    def load_session(self, session_id: str) -> bool:
+        """Load an existing session by ID."""
+        session = self._load_session(session_id)
+        if session:
+            # Save current session first
+            if self.current_session.messages:
+                self._save_session()
+
+            self.current_session = session
+            print(f"[Session] Loaded session: {session_id}")
+            print(f"[Session] History: {len(session.messages)} messages")
+            return True
+        else:
+            print(f"[Session] Session {session_id} not found")
+            return False
+
+    def clear_history(self):
+        """Clear current session history but keep the session ID."""
+        self.current_session.messages = []
+        self._save_session()
+        print(f"[Session] History cleared for session: {self.current_session.session_id}")
+
+    def get_session_id(self) -> str:
+        """Get current session ID."""
+        return self.current_session.session_id
+
+    def get_history(self) -> List[Dict]:
+        """Get current session history."""
+        return [
+            {"role": msg.role, "content": msg.content, "timestamp": msg.timestamp}
+            for msg in self.current_session.messages
+        ]
+
+    def list_sessions(self) -> List[Dict]:
+        """List all available sessions."""
+        sessions = []
+        HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+
+        for session_file in HISTORY_DIR.glob("session_*.json"):
+            try:
+                with open(session_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                sessions.append({
+                    "session_id": data["session_id"],
+                    "created_at": data["created_at"],
+                    "message_count": len(data.get("messages", []))
+                })
+            except Exception:
+                pass
+
+        return sorted(sessions, key=lambda x: x["created_at"], reverse=True)
+
+    # ==================== END SESSION MANAGEMENT ====================
+
+    # ==================== COMPANY LIST HELPER ====================
+
+    def _is_company_list_query(self, query: str) -> bool:
+        """Check if query is asking about available companies/data."""
+        query_lower = query.lower()
+
+        # Keywords yang mengindikasikan pertanyaan tentang daftar perusahaan
+        list_keywords = [
+            "perusahaan apa saja",
+            "daftar perusahaan",
+            "list perusahaan",
+            "perusahaan yang tersedia",
+            "data apa saja",
+            "data perusahaan apa",
+            "perusahaan mana saja",
+            "company apa saja",
+            "companies available",
+            "available companies",
+            "sektor apa saja",
+            "sector apa saja",
+            "ada perusahaan apa",
+            "punya data apa",
+            "data yang tersedia",
+        ]
+
+        return any(kw in query_lower for kw in list_keywords)
+
+    def _get_company_list_response(self) -> str:
+        """Generate formatted response with available companies by sector."""
+        # Group companies by sector
+        sector_companies = {}
+        for company, sector in COMPANY_SECTOR_MAP.items():
+            if sector not in sector_companies:
+                sector_companies[sector] = []
+            sector_companies[sector].append(company)
+
+        # Sort sectors alphabetically
+        sorted_sectors = sorted(sector_companies.keys())
+
+        # Build response
+        response_parts = [
+            "Berikut adalah daftar perusahaan yang datanya tersedia dalam sistem:\n"
+        ]
+
+        total_companies = 0
+        for sector in sorted_sectors:
+            companies = sorted(sector_companies[sector])
+            total_companies += len(companies)
+            response_parts.append(f"\n**{sector}** ({len(companies)} perusahaan):")
+            for company in companies:
+                response_parts.append(f"  • {company}")
+
+        response_parts.append(f"\n---\n**Total: {total_companies} perusahaan** dari {len(sorted_sectors)} sektor")
+        response_parts.append("\nAnda dapat bertanya tentang data ESG, emisi, keberlanjutan, dan informasi lainnya dari perusahaan-perusahaan di atas.")
+
+        return "\n".join(response_parts)
+
+    # ==================== END COMPANY LIST HELPER ====================
 
     def analyze_query(self, query: str) -> QueryAnalysis:
         """Analisis query untuk memahami intent dan entities."""
@@ -229,6 +733,30 @@ class ESGChatbotCanggih:
                 if canonical not in companies:
                     companies.append(canonical)
 
+        # Detect sectors from detected companies
+        sectors = []
+        for company in companies:
+            if company in COMPANY_SECTOR_MAP:
+                sector = COMPANY_SECTOR_MAP[company]
+                if sector not in sectors:
+                    sectors.append(sector)
+
+        # Also detect sectors from query keywords
+        sector_keywords = {
+            "Finance": ["bank", "keuangan", "kredit", "financial", "financing"],
+            "Mining": ["tambang", "batubara", "coal", "mining", "mineral"],
+            "Energy": ["migas", "energi", "oil", "gas", "pengeboran", "drilling"],
+            "Plantation": ["sawit", "palm", "perkebunan", "plantation", "cpo"],
+            "Transportation": ["transportasi", "logistik", "armada", "fleet", "kendaraan"],
+            "F&B": ["makanan", "minuman", "food", "beverage", "pangan"],
+            "Chemicals": ["kimia", "chemical", "petrokimia", "petrochemical"],
+            "Hostpitality": ["hotel", "hospitality", "pariwisata", "tourism", "properti"]
+        }
+        for sector, keywords in sector_keywords.items():
+            if any(kw in query_lower for kw in keywords):
+                if sector not in sectors:
+                    sectors.append(sector)
+
         # Detect comparison intent
         comparison_keywords = ["vs", "versus", "dibanding", "bandingkan", "perbandingan", "compare", "beda", "perbedaan"]
         is_comparison = any(kw in query_lower for kw in comparison_keywords) or len(companies) > 1
@@ -239,12 +767,29 @@ class ESGChatbotCanggih:
             if any(kw in query_lower for kw in info["keywords"]):
                 detected_topics.append(topic)
 
+        # Also check sector-specific topics
+        for sector in sectors:
+            if sector in SECTOR_SPECIFIC_TOPICS:
+                sector_info = SECTOR_SPECIFIC_TOPICS[sector]
+                if any(kw in query_lower for kw in sector_info.get("keywords", [])):
+                    topic_name = f"sector_{sector.lower()}"
+                    if topic_name not in detected_topics:
+                        detected_topics.append(topic_name)
+
         # Expand query dengan keywords terkait
         expanded_parts = [query]
+
+        # Add general ESG topic keywords
         for topic in detected_topics:
-            # Tambahkan beberapa keyword utama
-            keywords = ESG_TOPICS[topic]["keywords"][:3]
-            expanded_parts.extend(keywords)
+            if topic in ESG_TOPICS:
+                keywords = ESG_TOPICS[topic]["keywords"][:3]
+                expanded_parts.extend(keywords)
+
+        # Add sector-specific keywords
+        for sector in sectors:
+            if sector in SECTOR_SPECIFIC_TOPICS:
+                sector_keywords = SECTOR_SPECIFIC_TOPICS[sector].get("keywords", [])[:3]
+                expanded_parts.extend(sector_keywords)
 
         expanded_query = " ".join(expanded_parts)
 
@@ -253,28 +798,50 @@ class ESGChatbotCanggih:
             companies=companies,
             topics=detected_topics,
             is_comparison=is_comparison,
-            expanded_query=expanded_query
+            expanded_query=expanded_query,
+            sectors=sectors
         )
 
-    def search(self, query: str, company_filter: Optional[str] = None, top_k: int = 15) -> List[SearchResult]:
-        """Semantic search dengan optional company filter."""
+    def search(self, query: str, company_filter: Optional[str] = None,
+               sector_filter: Optional[str] = None, top_k: int = 15,
+               collection: str = None) -> List[SearchResult]:
+        """Semantic search dengan optional company and sector filter.
+
+        Args:
+            query: Search query
+            company_filter: Filter by company name
+            sector_filter: Filter by sector
+            top_k: Number of results to return
+            collection: Collection to search in (default: COLLECTION_NAME)
+        """
+        if collection is None:
+            collection = COLLECTION_NAME
+
         # E5 model membutuhkan prefix "query:"
         query_with_prefix = f"query: {query}"
         query_embedding = self.embedding_model.encode(query_with_prefix).tolist()
 
-        # Build filter
-        query_filter = None
+        # Build filter conditions
+        filter_conditions = []
         if company_filter:
-            query_filter = Filter(
-                must=[FieldCondition(key="nama_perusahaan", match=MatchValue(value=company_filter))]
+            filter_conditions.append(
+                FieldCondition(key="nama_perusahaan", match=MatchValue(value=company_filter))
             )
+        if sector_filter:
+            filter_conditions.append(
+                FieldCondition(key="sector", match=MatchValue(value=sector_filter))
+            )
+
+        query_filter = None
+        if filter_conditions:
+            query_filter = Filter(must=filter_conditions)
 
         # Gunakan score threshold yang lebih rendah untuk coverage lebih baik
         # Reranking akan memfilter hasil yang kurang relevan
         search_threshold = min(SCORE_THRESHOLD, 0.25)
 
         results = self.qdrant.query_points(
-            collection_name=COLLECTION_NAME,
+            collection_name=collection,
             query=query_embedding,
             query_filter=query_filter,
             limit=top_k,
@@ -286,6 +853,10 @@ class ESGChatbotCanggih:
         for r in results.points:
             payload = r.payload
             metadata = payload.get("metadata", {})
+
+            # Determine source type based on collection
+            source_type = "pdf" if collection == COLLECTION_NAME else "data"
+
             search_results.append(SearchResult(
                 id=str(r.id),
                 score=r.score,
@@ -294,22 +865,36 @@ class ESGChatbotCanggih:
                 source=payload.get("sumber_file", ""),
                 page=metadata.get("page_range", "N/A"),
                 section=metadata.get("section", "N/A"),
-                subsection=metadata.get("subsection", "")
+                subsection=metadata.get("subsection", ""),
+                source_type=source_type
             ))
 
         return search_results
 
-    def smart_retrieve(self, analysis: QueryAnalysis, top_k_per_company: int = 15) -> List[SearchResult]:
-        """Smart retrieval dengan multi-query approach untuk coverage lebih baik."""
-        all_results = []
-        seen_ids = set()
+    def smart_retrieve(self, analysis: QueryAnalysis, top_k_per_company: int = 15) -> Tuple[List[SearchResult], List[SearchResult]]:
+        """Smart retrieval dengan multi-query approach untuk coverage lebih baik.
 
-        def add_results(results: List[SearchResult]):
-            """Add results while avoiding duplicates."""
+        Returns:
+            Tuple of (pdf_results, data_results) - results from both collections
+        """
+        pdf_results = []
+        data_results = []
+        seen_pdf_ids = set()
+        seen_data_ids = set()
+
+        def add_pdf_results(results: List[SearchResult]):
+            """Add PDF results while avoiding duplicates."""
             for r in results:
-                if r.id not in seen_ids:
-                    seen_ids.add(r.id)
-                    all_results.append(r)
+                if r.id not in seen_pdf_ids:
+                    seen_pdf_ids.add(r.id)
+                    pdf_results.append(r)
+
+        def add_data_results(results: List[SearchResult]):
+            """Add data results while avoiding duplicates."""
+            for r in results:
+                if r.id not in seen_data_ids:
+                    seen_data_ids.add(r.id)
+                    data_results.append(r)
 
         # Buat multiple queries untuk coverage lebih baik
         queries_to_run = [analysis.original_query]
@@ -319,6 +904,12 @@ class ESGChatbotCanggih:
             if topic in ESG_TOPICS and "search_queries" in ESG_TOPICS[topic]:
                 queries_to_run.extend(ESG_TOPICS[topic]["search_queries"][:2])
 
+        # Tambahkan sector-specific search queries
+        for sector in analysis.sectors:
+            if sector in SECTOR_SPECIFIC_TOPICS:
+                sector_metrics = SECTOR_SPECIFIC_TOPICS[sector].get("metrics", [])
+                queries_to_run.extend(sector_metrics[:2])
+
         # Tambahkan expanded query jika berbeda
         if analysis.expanded_query != analysis.original_query:
             queries_to_run.append(analysis.expanded_query)
@@ -326,50 +917,142 @@ class ESGChatbotCanggih:
         # Deduplicate queries
         queries_to_run = list(dict.fromkeys(queries_to_run))
 
-        print(f"[Retrieve] Running {len(queries_to_run)} queries")
+        print(f"[Retrieve] Running {len(queries_to_run)} queries on both collections")
+        if analysis.sectors:
+            print(f"[Retrieve] Detected sectors: {', '.join(analysis.sectors)}")
+
+        # ============== SEARCH PDF COLLECTION (Primary) ==============
+        print(f"\n[Retrieve PDF] Searching {COLLECTION_NAME}...")
 
         if analysis.is_comparison and len(analysis.companies) >= 2:
             # Comparison mode: search per company untuk hasil seimbang
-            print(f"[Retrieve] Comparison mode: {len(analysis.companies)} companies")
+            print(f"  Mode: Comparison ({len(analysis.companies)} companies)")
 
             for company in analysis.companies:
                 company_results = []
+                company_sector = COMPANY_SECTOR_MAP.get(company)
+
                 for query in queries_to_run:
-                    results = self.search(query, company_filter=company, top_k=top_k_per_company)
+                    results = self.search(query, company_filter=company, top_k=top_k_per_company,
+                                         collection=COLLECTION_NAME)
                     for r in results:
-                        if r.id not in seen_ids:
-                            seen_ids.add(r.id)
+                        if r.id not in seen_pdf_ids:
+                            seen_pdf_ids.add(r.id)
                             company_results.append(r)
 
-                print(f"  → {company}: {len(company_results)} unique results")
-                all_results.extend(company_results)
+                print(f"  → {company}: {len(company_results)} results")
+                pdf_results.extend(company_results)
 
-            # Sort by score
-            all_results.sort(key=lambda x: x.score, reverse=True)
+            pdf_results.sort(key=lambda x: x.score, reverse=True)
 
         elif analysis.companies:
-            # Single company mode - multiple queries
+            # Single company mode
             company = analysis.companies[0]
-            print(f"[Retrieve] Single company: {company}")
+            company_sector = COMPANY_SECTOR_MAP.get(company, "Unknown")
+            print(f"  Mode: Single company - {company} ({company_sector})")
 
             for query in queries_to_run:
-                results = self.search(query, company_filter=company, top_k=top_k_per_company)
-                add_results(results)
-                print(f"  → Query '{query[:40]}...': {len(results)} results")
+                results = self.search(query, company_filter=company, top_k=top_k_per_company,
+                                     collection=COLLECTION_NAME)
+                add_pdf_results(results)
 
-            print(f"  → Total unique: {len(all_results)} results")
+            print(f"  → Total: {len(pdf_results)} results")
+
+        elif analysis.sectors:
+            # Sector-based search
+            print(f"  Mode: Sector-based - {', '.join(analysis.sectors)}")
+
+            for sector in analysis.sectors:
+                sector_results = []
+                for query in queries_to_run:
+                    results = self.search(query, sector_filter=sector, top_k=top_k_per_company,
+                                         collection=COLLECTION_NAME)
+                    for r in results:
+                        if r.id not in seen_pdf_ids:
+                            seen_pdf_ids.add(r.id)
+                            sector_results.append(r)
+
+                print(f"  → Sector {sector}: {len(sector_results)} results")
+                pdf_results.extend(sector_results)
+
+            pdf_results.sort(key=lambda x: x.score, reverse=True)
 
         else:
-            # No company filter - general search
-            print(f"[Retrieve] General search (no company filter)")
+            # No filter - general search
+            print(f"  Mode: General search")
 
             for query in queries_to_run:
-                results = self.search(query, top_k=top_k_per_company)
-                add_results(results)
+                results = self.search(query, top_k=top_k_per_company, collection=COLLECTION_NAME)
+                add_pdf_results(results)
 
-            print(f"  → Total unique: {len(all_results)} results")
+            print(f"  → Total: {len(pdf_results)} results")
 
-        return all_results
+        # ============== SEARCH DATA COLLECTION (Supplement) ==============
+        print(f"\n[Retrieve Data] Searching {COLLECTION_DATA_NAME}...")
+
+        # For data collection, use simpler search (usually has less data)
+        data_top_k = min(top_k_per_company, 10)
+
+        if analysis.is_comparison and len(analysis.companies) >= 2:
+            print(f"  Mode: Comparison ({len(analysis.companies)} companies)")
+
+            for company in analysis.companies:
+                company_results = []
+
+                for query in queries_to_run[:3]:  # Limit queries for data collection
+                    results = self.search(query, company_filter=company, top_k=data_top_k,
+                                         collection=COLLECTION_DATA_NAME)
+                    for r in results:
+                        if r.id not in seen_data_ids:
+                            seen_data_ids.add(r.id)
+                            company_results.append(r)
+
+                print(f"  → {company}: {len(company_results)} results")
+                data_results.extend(company_results)
+
+            data_results.sort(key=lambda x: x.score, reverse=True)
+
+        elif analysis.companies:
+            company = analysis.companies[0]
+            print(f"  Mode: Single company - {company}")
+
+            for query in queries_to_run[:3]:
+                results = self.search(query, company_filter=company, top_k=data_top_k,
+                                     collection=COLLECTION_DATA_NAME)
+                add_data_results(results)
+
+            print(f"  → Total: {len(data_results)} results")
+
+        elif analysis.sectors:
+            print(f"  Mode: Sector-based - {', '.join(analysis.sectors)}")
+
+            for sector in analysis.sectors:
+                sector_results = []
+                for query in queries_to_run[:3]:
+                    results = self.search(query, sector_filter=sector, top_k=data_top_k,
+                                         collection=COLLECTION_DATA_NAME)
+                    for r in results:
+                        if r.id not in seen_data_ids:
+                            seen_data_ids.add(r.id)
+                            sector_results.append(r)
+
+                print(f"  → Sector {sector}: {len(sector_results)} results")
+                data_results.extend(sector_results)
+
+            data_results.sort(key=lambda x: x.score, reverse=True)
+
+        else:
+            print(f"  Mode: General search")
+
+            for query in queries_to_run[:3]:
+                results = self.search(query, top_k=data_top_k, collection=COLLECTION_DATA_NAME)
+                add_data_results(results)
+
+            print(f"  → Total: {len(data_results)} results")
+
+        print(f"\n[Retrieve Summary] PDF: {len(pdf_results)}, Data: {len(data_results)}")
+
+        return pdf_results, data_results
 
     def rerank_results(self, results: List[SearchResult], query: str, analysis: QueryAnalysis, top_k: int = 20) -> List[SearchResult]:
         """Rerank results dengan prioritas pada data numerik dan relevansi topik."""
@@ -389,7 +1072,8 @@ class ESGChatbotCanggih:
 
             # 2. Bonus untuk konten dengan data numerik/tabel (+0.05)
             numeric_indicators = ["ton co2", "kwh", "mwh", "gigajoule", "terajoule", "liter",
-                                  "m3", "rupiah", "miliar", "juta", "karyawan", "employee"]
+                                  "m3", "rupiah", "miliar", "juta", "karyawan", "employee",
+                                  "ton coeq", "tco2e", "triliun", "billion", "gj"]
             has_numeric = any(ind in content_lower for ind in numeric_indicators)
             if has_numeric:
                 score += 0.05
@@ -406,44 +1090,91 @@ class ESGChatbotCanggih:
             if "tabel" in content_lower or "table" in content_lower:
                 score += 0.02
 
-            # 5. Bonus untuk topic keywords match (+0.02 per topic)
+            # 5. Bonus untuk topic keywords match (+0.005 per match)
             for topic in analysis.topics:
                 if topic in ESG_TOPICS:
                     topic_keywords = ESG_TOPICS[topic].get("keywords", [])
                     topic_match = sum(1 for kw in topic_keywords if kw in content_lower)
                     score += topic_match * 0.005
 
+            # 6. NEW: Bonus untuk sector-specific keywords match (+0.005 per match)
+            for sector in analysis.sectors:
+                if sector in SECTOR_SPECIFIC_TOPICS:
+                    sector_keywords = SECTOR_SPECIFIC_TOPICS[sector].get("keywords", [])
+                    sector_match = sum(1 for kw in sector_keywords if kw in content_lower)
+                    score += sector_match * 0.005
+
+                    # Additional bonus for sector-specific metrics
+                    sector_metrics = SECTOR_SPECIFIC_TOPICS[sector].get("metrics", [])
+                    if any(metric.lower() in content_lower for metric in sector_metrics):
+                        score += 0.03
+
             return score
 
         reranked = sorted(results, key=relevance_score, reverse=True)
         return reranked[:top_k]
 
-    def format_context(self, results: List[SearchResult]) -> str:
-        """Format search results menjadi context untuk LLM."""
-        if not results:
+    def format_context(self, pdf_results: List[SearchResult], data_results: List[SearchResult] = None) -> str:
+        """Format search results menjadi context untuk LLM.
+
+        Args:
+            pdf_results: Results from PDF collection (primary)
+            data_results: Results from data collection (supplementary)
+        """
+        if not pdf_results and not data_results:
             return "Tidak ada dokumen yang ditemukan."
 
         context_parts = []
-        for i, r in enumerate(results, 1):
-            section_info = f"{r.section}"
-            if r.subsection:
-                section_info += f" > {r.subsection}"
+        doc_num = 1
 
-            context_parts.append(
-                f"[DOKUMEN {i}]\n"
-                f"Perusahaan: {r.company}\n"
-                f"Sumber: {r.source}\n"
-                f"Halaman: {r.page}\n"
-                f"Section: {section_info}\n"
-                f"Relevansi: {r.score:.4f}\n"
-                f"---\n"
-                f"{r.content}\n"
-            )
+        # Format PDF results (primary source)
+        if pdf_results:
+            context_parts.append("=" * 50)
+            context_parts.append("SUMBER UTAMA (Laporan PDF)")
+            context_parts.append("=" * 50)
 
-        return "\n" + "="*50 + "\n".join(context_parts)
+            for r in pdf_results:
+                section_info = f"{r.section}"
+                if r.subsection:
+                    section_info += f" > {r.subsection}"
+
+                context_parts.append(
+                    f"\n[DOKUMEN {doc_num}]\n"
+                    f"Perusahaan: {r.company}\n"
+                    f"Sumber: {r.source}\n"
+                    f"Halaman: {r.page}\n"
+                    f"Section: {section_info}\n"
+                    f"Relevansi: {r.score:.4f}\n"
+                    f"---\n"
+                    f"{r.content}\n"
+                )
+                doc_num += 1
+
+        # Format data results (supplementary source)
+        if data_results:
+            context_parts.append("\n" + "=" * 50)
+            context_parts.append("DATA TAMBAHAN (Data Kuantitatif)")
+            context_parts.append("=" * 50)
+
+            for r in data_results:
+                section_info = f"{r.section}"
+                if r.subsection:
+                    section_info += f" > {r.subsection}"
+
+                context_parts.append(
+                    f"\n[DATA {doc_num}]\n"
+                    f"Perusahaan: {r.company}\n"
+                    f"Sumber: {r.source}\n"
+                    f"Relevansi: {r.score:.4f}\n"
+                    f"---\n"
+                    f"{r.content}\n"
+                )
+                doc_num += 1
+
+        return "\n".join(context_parts)
 
     def call_llm(self, query: str, context: str, analysis: QueryAnalysis) -> Tuple[str, Dict]:
-        """Call LLM dengan context dan analysis."""
+        """Call LLM dengan context, analysis, dan conversation history."""
 
         # Build enhanced prompt
         comparison_hint = ""
@@ -464,12 +1195,20 @@ Berikan jawaban yang lengkap, akurat, dan terstruktur berdasarkan konteks di ata
             "Authorization": f"Bearer {MODEL_ARK_API_KEY}"
         }
 
+        # Build messages with history
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+        # Add conversation history (limited to avoid token overflow)
+        history = self.current_session.get_history_for_llm(MAX_HISTORY_MESSAGES)
+        if history:
+            messages.extend(history)
+
+        # Add current user message
+        messages.append({"role": "user", "content": user_message})
+
         payload = {
             "model": MODEL_ARK_LLM_NAME,
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_message}
-            ],
+            "messages": messages,
             "temperature": 0.3,  # Lower temperature untuk akurasi
             "max_tokens": 3000
         }
@@ -501,6 +1240,10 @@ Berikan jawaban yang lengkap, akurat, dan terstruktur berdasarkan konteks di ata
     def save_results(self, query: str, analysis: QueryAnalysis, results: List[SearchResult],
                      response: str, token_usage: Dict):
         """Save hasil ke JSON file."""
+        # Separate PDF and data results for logging
+        pdf_results = [r for r in results if r.source_type == "pdf"]
+        data_results = [r for r in results if r.source_type == "data"]
+
         output_data = {
             "query": query,
             "timestamp": datetime.now().isoformat(),
@@ -508,21 +1251,29 @@ Berikan jawaban yang lengkap, akurat, dan terstruktur berdasarkan konteks di ata
                 "companies": analysis.companies,
                 "topics": analysis.topics,
                 "is_comparison": analysis.is_comparison,
-                "expanded_query": analysis.expanded_query
+                "expanded_query": analysis.expanded_query,
+                "sectors": analysis.sectors
             },
             "config": {
                 "embedding_model": EMBEDDING_MODEL,
                 "llm_model": MODEL_ARK_LLM_NAME,
-                "collection": COLLECTION_NAME,
-                "score_threshold": SCORE_THRESHOLD
+                "collection_pdf": COLLECTION_NAME,
+                "collection_data": COLLECTION_DATA_NAME,
+                "score_threshold": SCORE_THRESHOLD,
+                "rerank_top_k_pdf": RERANK_TOP_K,
+                "rerank_top_k_data": RERANK_DATA_TOP_K
             },
             "token_usage": {
                 "query": token_usage,
                 "session": self.token_stats.get_summary()
             },
-            "total_results": len(results),
+            "results_summary": {
+                "total": len(results),
+                "pdf_results": len(pdf_results),
+                "data_results": len(data_results)
+            },
             "response": response,
-            "search_results": [
+            "search_results_pdf": [
                 {
                     "rank": i+1,
                     "score": round(r.score, 4),
@@ -530,9 +1281,22 @@ Berikan jawaban yang lengkap, akurat, dan terstruktur berdasarkan konteks di ata
                     "source": r.source,
                     "page": r.page,
                     "section": r.section,
+                    "source_type": r.source_type,
                     "content_preview": r.content[:300] + "..." if len(r.content) > 300 else r.content
                 }
-                for i, r in enumerate(results)
+                for i, r in enumerate(pdf_results)
+            ],
+            "search_results_data": [
+                {
+                    "rank": i+1,
+                    "score": round(r.score, 4),
+                    "company": r.company,
+                    "source": r.source,
+                    "section": r.section,
+                    "source_type": r.source_type,
+                    "content_preview": r.content[:300] + "..." if len(r.content) > 300 else r.content
+                }
+                for i, r in enumerate(data_results)
             ]
         }
 
@@ -542,8 +1306,19 @@ Berikan jawaban yang lengkap, akurat, dan terstruktur berdasarkan konteks di ata
     def chat(self, query: str) -> str:
         """Main chat function."""
         print(f"\n{'='*60}")
+        print(f"[Session: {self.current_session.session_id}]")
         print(f"[Query] {query}")
         print(f"{'='*60}")
+
+        # Check if query is asking about available companies/data
+        if self._is_company_list_query(query):
+            print("\n[Info] Query asking for company list - returning static response")
+            company_list_response = self._get_company_list_response()
+            # Save to history
+            self.current_session.add_message("user", query)
+            self.current_session.add_message("assistant", company_list_response)
+            self._save_session()
+            return company_list_response
 
         # Step 1: Analyze query
         print("\n[Step 1] Analyzing query...")
@@ -552,25 +1327,56 @@ Berikan jawaban yang lengkap, akurat, dan terstruktur berdasarkan konteks di ata
         print(f"  → Topics: {analysis.topics if analysis.topics else 'General'}")
         print(f"  → Comparison: {'Yes' if analysis.is_comparison else 'No'}")
 
-        # Step 2: Smart retrieval
+        # Validasi: Batasi perbandingan maksimal 2 perusahaan
+        MAX_COMPARISON_COMPANIES = 2
+        if analysis.is_comparison and len(analysis.companies) > MAX_COMPARISON_COMPANIES:
+            companies_str = ", ".join(analysis.companies)
+            reject_msg = (
+                f"Mohon maaf, saat ini sistem hanya mendukung perbandingan maksimal {MAX_COMPARISON_COMPANIES} perusahaan sekaligus. "
+                f"Anda menyebutkan {len(analysis.companies)} perusahaan: {companies_str}.\n\n"
+                f"Silakan ajukan pertanyaan perbandingan dengan maksimal 2 perusahaan, misalnya:\n"
+                f"  • \"Bandingkan emisi {analysis.companies[0]} dan {analysis.companies[1]}\"\n"
+                f"  • \"Apa perbedaan keberlanjutan {analysis.companies[0]} vs {analysis.companies[1]}?\""
+            )
+            print(f"  ⚠️  Rejected: Too many companies for comparison ({len(analysis.companies)} > {MAX_COMPARISON_COMPANIES})")
+            # Save to history
+            self.current_session.add_message("user", query)
+            self.current_session.add_message("assistant", reject_msg)
+            self._save_session()
+            return reject_msg
+
+        # Step 2: Smart retrieval (returns tuple of pdf_results, data_results)
         print("\n[Step 2] Retrieving documents...")
-        results = self.smart_retrieve(analysis, top_k_per_company=10)
+        pdf_results, data_results = self.smart_retrieve(analysis, top_k_per_company=10)
 
-        if not results:
-            return "Maaf, tidak ditemukan dokumen yang relevan dengan pertanyaan Anda."
+        if not pdf_results and not data_results:
+            no_result_msg = "Maaf, tidak ditemukan dokumen yang relevan dengan pertanyaan Anda."
+            # Still save to history
+            self.current_session.add_message("user", query)
+            self.current_session.add_message("assistant", no_result_msg)
+            self._save_session()
+            return no_result_msg
 
-        # Step 3: Rerank
+        # Step 3: Rerank both result sets
         print("\n[Step 3] Reranking results...")
-        reranked = self.rerank_results(results, query, analysis, top_k=20)
-        print(f"  → Top {len(reranked)} results selected")
+        reranked_pdf = self.rerank_results(pdf_results, query, analysis, top_k=RERANK_TOP_K)
+        reranked_data = self.rerank_results(data_results, query, analysis, top_k=RERANK_DATA_TOP_K)
+        print(f"  → PDF results: {len(reranked_pdf)} selected")
+        print(f"  → Data results: {len(reranked_data)} selected")
 
-        # Step 4: Format context
-        context = self.format_context(reranked)
+        # Step 4: Format context with both sources
+        context = self.format_context(reranked_pdf, reranked_data)
         print(f"\n[Step 4] Context size: {len(context):,} characters")
 
         # Step 5: Generate response
         print("\n[Step 5] Generating response...")
         response, token_usage = self.call_llm(query, context, analysis)
+
+        # Step 6: Save to chat history
+        self.current_session.add_message("user", query)
+        self.current_session.add_message("assistant", response)
+        self._save_session()
+        print(f"\n[History] Messages in session: {len(self.current_session.messages)}")
 
         # Update token statistics
         self.token_stats.add_usage(
@@ -593,8 +1399,9 @@ Berikan jawaban yang lengkap, akurat, dan terstruktur berdasarkan konteks di ata
         print(f"  → Total tokens       : {stats['total_tokens']:,}")
         print(f"  → Avg tokens/query   : {stats['avg_tokens_per_query']:,}")
 
-        # Step 6: Save results
-        self.save_results(query, analysis, reranked, response, token_usage)
+        # Step 7: Save results (combine both result sets for logging)
+        all_results = reranked_pdf + reranked_data
+        self.save_results(query, analysis, all_results, response, token_usage)
         print(f"\n[Output] Saved to: {OUTPUT_FILE}")
 
         return response
@@ -625,10 +1432,22 @@ def print_final_stats(chatbot: ESGChatbotCanggih):
 
 
 def main():
-    chatbot = ESGChatbotCanggih()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="ESG Chatbot Canggih")
+    parser.add_argument(
+        "--session", "-s",
+        type=str,
+        help="Session ID untuk melanjutkan percakapan sebelumnya"
+    )
+    args = parser.parse_args()
+
+    # Initialize chatbot with optional session ID
+    chatbot = ESGChatbotCanggih(session_id=args.session)
 
     print("\n" + "="*70)
     print("  Selamat datang di ESG Chatbot Canggih!")
+    print(f"  Session ID: {chatbot.get_session_id()}")
     print("  ")
     print("  Contoh pertanyaan:")
     print("    - Berapa emisi GRK Bank Jatim tahun 2024?")
@@ -636,7 +1455,15 @@ def main():
     print("    - Apa strategi keberlanjutan Bank Jago?")
     print("    - Berapa jumlah karyawan Bank Jatim?")
     print("  ")
-    print("  Commands:")
+    print("  Session Commands:")
+    print("    - '/new [id]'     - Buat session baru (opsional dengan ID)")
+    print("    - '/load <id>'    - Load session berdasarkan ID")
+    print("    - '/sessions'     - Lihat daftar sessions")
+    print("    - '/history'      - Lihat history percakapan")
+    print("    - '/clear'        - Hapus history session ini")
+    print("    - '/id'           - Tampilkan session ID saat ini")
+    print("  ")
+    print("  Other Commands:")
     print("    - 'quit' atau 'exit' untuk keluar")
     print("    - 'stats' untuk melihat token usage")
     print("    - 'reset' untuk reset token statistics")
@@ -650,14 +1477,76 @@ def main():
                 print("   ⚠️  Pertanyaan tidak boleh kosong!")
                 continue
 
+            # Exit commands
             if query.lower() in ['quit', 'exit', 'q']:
                 print_final_stats(chatbot)
                 print("\n   👋 Terima kasih telah menggunakan ESG Chatbot Canggih!")
                 break
 
+            # Session commands
+            if query.startswith('/'):
+                cmd_parts = query[1:].split(maxsplit=1)
+                cmd = cmd_parts[0].lower()
+                cmd_arg = cmd_parts[1] if len(cmd_parts) > 1 else None
+
+                if cmd == 'new':
+                    new_id = chatbot.new_session(cmd_arg)
+                    print(f"   ✓ Session baru dibuat: {new_id}")
+                    continue
+
+                elif cmd == 'load':
+                    if not cmd_arg:
+                        print("   ⚠️  Gunakan: /load <session_id>")
+                        continue
+                    if chatbot.load_session(cmd_arg):
+                        print(f"   ✓ Session {cmd_arg} berhasil di-load")
+                    else:
+                        print(f"   ✗ Session {cmd_arg} tidak ditemukan")
+                    continue
+
+                elif cmd == 'sessions':
+                    sessions = chatbot.list_sessions()
+                    if sessions:
+                        print("\n   [Daftar Sessions]")
+                        for s in sessions:
+                            marker = "→ " if s['session_id'] == chatbot.get_session_id() else "  "
+                            print(f"   {marker}{s['session_id']} ({s['message_count']} messages) - {s['created_at'][:16]}")
+                    else:
+                        print("   Belum ada sessions tersimpan.")
+                    continue
+
+                elif cmd == 'history':
+                    history = chatbot.get_history()
+                    if history:
+                        print(f"\n   [History - Session: {chatbot.get_session_id()}]")
+                        print("   " + "-"*50)
+                        for i, msg in enumerate(history):
+                            role = "🧑 User" if msg['role'] == 'user' else "🤖 Assistant"
+                            content_preview = msg['content'][:100] + "..." if len(msg['content']) > 100 else msg['content']
+                            print(f"   {i+1}. {role}: {content_preview}")
+                        print("   " + "-"*50)
+                    else:
+                        print("   History kosong.")
+                    continue
+
+                elif cmd == 'clear':
+                    chatbot.clear_history()
+                    print("   ✓ History telah dihapus")
+                    continue
+
+                elif cmd == 'id':
+                    print(f"   Session ID: {chatbot.get_session_id()}")
+                    continue
+
+                else:
+                    print(f"   ⚠️  Command tidak dikenal: /{cmd}")
+                    continue
+
+            # Stats command
             if query.lower() == 'stats':
                 stats = chatbot.get_token_stats()
                 print("\n[Token Statistics]")
+                print(f"  Session ID           : {chatbot.get_session_id()}")
                 print(f"  Total queries        : {stats['total_queries']}")
                 print(f"  Total input tokens   : {stats['total_prompt_tokens']:,}")
                 print(f"  Total output tokens  : {stats['total_completion_tokens']:,}")
@@ -669,6 +1558,7 @@ def main():
                 chatbot.reset_token_stats()
                 continue
 
+            # Normal chat
             response = chatbot.chat(query)
 
             print("\n" + "="*70)

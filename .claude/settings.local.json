@@ -8,7 +8,11 @@
       "Bash(source .venv/bin/activate)",
       "Bash(source:*)",
       "Bash(pip install:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(/opt/homebrew/bin/python3 -m pip install:*)",
+      "Bash(for f in *.json)",
+      "Bash(do echo \"=== $f ===\")",
+      "Bash(done)"
     ]
   }
 }
