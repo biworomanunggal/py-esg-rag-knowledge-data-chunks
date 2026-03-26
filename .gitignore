@@ -7,3 +7,4 @@ chunked_data_bak/
 chunked_data_excel/
 excel_resources/
 resource/*
+.env
