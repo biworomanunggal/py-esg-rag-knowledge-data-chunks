@@ -4,17 +4,18 @@ import hashlib
 import argparse
 from pathlib import Path
 from dotenv import load_dotenv
+import requests
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance
-from sentence_transformers import SentenceTransformer
 
 load_dotenv()
 
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
 COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "esg_chatbot")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-base")
 EMBEDDING_DIMENSION = int(os.getenv("EMBEDDING_DIMENSION", 768))
+EMBEDDING_API_URL = os.getenv("EMBEDDING_API_URL")
+EMBEDDING_API_TOKEN = os.getenv("EMBEDDING_API_TOKEN")
 
 CHUNKED_DATA_DIR = Path(__file__).parent.parent / "chunked_data"
 
@@ -46,6 +47,21 @@ def get_existing_ids(client: QdrantClient, collection_name: str) -> set:
     except Exception as e:
         print(f"Error fetching existing IDs: {e}")
     return existing_ids
+
+
+def get_embeddings_batch(texts: list[str]) -> list[list[float]]:
+    """Get embeddings for a batch of texts via the embedding API."""
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {EMBEDDING_API_TOKEN}"
+    }
+    response = requests.post(
+        f"{EMBEDDING_API_URL}/encode-batch",
+        headers=headers,
+        json={"texts": texts}
+    )
+    response.raise_for_status()
+    return response.json()["embeddings"]
 
 
 def ensure_collection_exists(client: QdrantClient, collection_name: str, vector_size: int):
@@ -125,11 +141,14 @@ def main():
             print(f"  - {s}")
         return
 
+    if not EMBEDDING_API_URL or not EMBEDDING_API_TOKEN:
+        print("Error: EMBEDDING_API_URL and EMBEDDING_API_TOKEN must be set in .env")
+        return
+
     print("Connecting to Qdrant...")
     client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
-    print(f"Loading embedding model: {EMBEDDING_MODEL}")
-    model = SentenceTransformer(EMBEDDING_MODEL)
+    print(f"Using embedding API: {EMBEDDING_API_URL}")
 
     ensure_collection_exists(client, COLLECTION_NAME, EMBEDDING_DIMENSION)
 
@@ -143,16 +162,13 @@ def main():
         print("No chunks to insert")
         return
 
-    points_to_insert = []
+    new_chunks = []
     skipped_count = 0
 
     for chunk in chunks:
         content = chunk.get("content", "")
         nama_perusahaan = chunk.get("nama_perusahaan", "")
         sumber_file = chunk.get("sumber_file", "")
-        nama_file = chunk.get("nama_file", "")
-        sector = chunk.get("sector", "")
-        metadata = chunk.get("metadata", {})
 
         point_id = generate_point_id(content, nama_perusahaan, sumber_file)
 
@@ -160,37 +176,42 @@ def main():
             skipped_count += 1
             continue
 
-        embedding = model.encode(content).tolist()
-
-        payload = {
-            "content": content,
-            "nama_perusahaan": nama_perusahaan,
-            "sumber_file": sumber_file,
-            "nama_file": nama_file,
-            "sector": sector,
-            "metadata": metadata
-        }
-
-        point = PointStruct(
-            id=point_id,
-            vector=embedding,
-            payload=payload
-        )
-        points_to_insert.append(point)
+        new_chunks.append((point_id, chunk))
 
     print(f"Skipped {skipped_count} existing chunks")
-    print(f"New chunks to insert: {len(points_to_insert)}")
+    print(f"New chunks to process: {len(new_chunks)}")
 
-    if points_to_insert:
-        batch_size = 100
-        for i in range(0, len(points_to_insert), batch_size):
-            batch = points_to_insert[i:i + batch_size]
-            client.upsert(collection_name=COLLECTION_NAME, points=batch)
-            print(f"Inserted batch {i // batch_size + 1}: {len(batch)} points")
-
-        print(f"Successfully inserted {len(points_to_insert)} new points")
-    else:
+    if not new_chunks:
         print("No new data to insert")
+        return
+
+    batch_size = 100
+    total_inserted = 0
+
+    for i in range(0, len(new_chunks), batch_size):
+        batch = new_chunks[i:i + batch_size]
+        texts = [item[1].get("content", "") for item in batch]
+
+        print(f"Encoding batch {i // batch_size + 1} ({len(batch)} texts)...")
+        embeddings = get_embeddings_batch(texts)
+
+        points = []
+        for (point_id, chunk), embedding in zip(batch, embeddings):
+            payload = {
+                "content": chunk.get("content", ""),
+                "nama_perusahaan": chunk.get("nama_perusahaan", ""),
+                "sumber_file": chunk.get("sumber_file", ""),
+                "nama_file": chunk.get("nama_file", ""),
+                "sector": chunk.get("sector", ""),
+                "metadata": chunk.get("metadata", {})
+            }
+            points.append(PointStruct(id=point_id, vector=embedding, payload=payload))
+
+        client.upsert(collection_name=COLLECTION_NAME, points=points)
+        total_inserted += len(points)
+        print(f"Inserted batch {i // batch_size + 1}: {len(points)} points")
+
+    print(f"Successfully inserted {total_inserted} new points")
 
 
 if __name__ == "__main__":
