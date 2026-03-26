@@ -149,7 +149,7 @@ def main():
     print("Connecting to Qdrant...")
     is_remote = "katadata.co.id" in QDRANT_HOST
     if is_remote:
-        client = QdrantClient(url=f"https://{QDRANT_HOST}", api_key=QDRANT_TOKEN)
+        client = QdrantClient(url=f"https://{QDRANT_HOST}:{QDRANT_PORT}", api_key=QDRANT_TOKEN, timeout=60, https=True)
         print(f"Using remote Qdrant: {QDRANT_HOST} (with API key)")
     else:
         client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
