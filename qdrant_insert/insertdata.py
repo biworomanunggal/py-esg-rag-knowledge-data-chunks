@@ -1,6 +1,7 @@
 import os
 import json
 import hashlib
+import argparse
 from pathlib import Path
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
@@ -61,15 +62,33 @@ def ensure_collection_exists(client: QdrantClient, collection_name: str, vector_
     else:
         print(f"Collection already exists: {collection_name}")
 
-def load_chunked_data() -> list:
-    """Load all JSON files from chunked_data directory."""
+def list_available_sectors() -> list:
+    """List all available sector directories in chunked_data."""
+    if not CHUNKED_DATA_DIR.exists():
+        return []
+    return sorted([d.name for d in CHUNKED_DATA_DIR.iterdir() if d.is_dir()])
+
+
+def load_chunked_data(sector: str = None) -> list:
+    """Load JSON files from chunked_data directory, optionally filtered by sector."""
     all_chunks = []
 
     if not CHUNKED_DATA_DIR.exists():
         print(f"Directory not found: {CHUNKED_DATA_DIR}")
         return all_chunks
 
-    for json_file in CHUNKED_DATA_DIR.glob("**/*.json"):
+    if sector:
+        sector_dir = CHUNKED_DATA_DIR / sector
+        if not sector_dir.exists():
+            available = list_available_sectors()
+            print(f"Sector '{sector}' not found. Available sectors: {', '.join(available)}")
+            return all_chunks
+        search_path = sector_dir
+        print(f"Filtering by sector: {sector}")
+    else:
+        search_path = CHUNKED_DATA_DIR
+
+    for json_file in search_path.glob("**/*.json"):
         print(f"Loading: {json_file.name}")
         with open(json_file, "r", encoding="utf-8") as f:
             chunks = json.load(f)
@@ -79,7 +98,33 @@ def load_chunked_data() -> list:
     return all_chunks
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Insert chunked data into Qdrant")
+    parser.add_argument(
+        "--sector",
+        type=str,
+        default=None,
+        help="Insert only a specific sector (e.g. --sector Energy). "
+             "Case-sensitive, must match folder name in chunked_data/."
+    )
+    parser.add_argument(
+        "--list-sectors",
+        action="store_true",
+        help="List available sectors and exit"
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+
+    if args.list_sectors:
+        sectors = list_available_sectors()
+        print("Available sectors:")
+        for s in sectors:
+            print(f"  - {s}")
+        return
+
     print("Connecting to Qdrant...")
     client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
@@ -92,7 +137,7 @@ def main():
     existing_ids = get_existing_ids(client, COLLECTION_NAME)
     print(f"Found {len(existing_ids)} existing points")
 
-    chunks = load_chunked_data()
+    chunks = load_chunked_data(sector=args.sector)
 
     if not chunks:
         print("No chunks to insert")
