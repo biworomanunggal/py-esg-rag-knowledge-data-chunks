@@ -8,3 +8,5 @@ chunked_data_excel/
 excel_resources/
 resource/*
 .env
+data/.env
+data/downloads/
